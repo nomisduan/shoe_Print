@@ -29,9 +29,52 @@
 		4DFA92A22DA8EA460059B2AD /* shoePrintUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shoePrintUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4D7388432DB1457C00955C66 /* Exceptions for "shoePrint" folder in "shoePrint" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/Item.swift,
+				Models/Shoe.swift,
+				Models/StepEntry.swift,
+				Views/AddAPairView.swift,
+				Views/AddEntryView.swift,
+				Views/ContentView.swift,
+				Views/EditPairView.swift,
+				Views/MainView.swift,
+				Views/ShoeCardView.swift,
+				Views/ShoeGridView.swift,
+				Views/ShoeListView.swift,
+				Views/ShoeRowView.swift,
+			);
+			target = 4DFA92852DA8EA430059B2AD /* shoePrint */;
+		};
+		4D7388442DB1457C00955C66 /* Exceptions for "shoePrint" folder in "shoePrintUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/Item.swift,
+				Models/Shoe.swift,
+				Models/StepEntry.swift,
+				Views/AddAPairView.swift,
+				Views/AddEntryView.swift,
+				Views/ContentView.swift,
+				Views/EditPairView.swift,
+				Views/MainView.swift,
+				Views/ShoeCardView.swift,
+				Views/ShoeGridView.swift,
+				Views/ShoeListView.swift,
+				Views/ShoeRowView.swift,
+			);
+			target = 4DFA92A12DA8EA460059B2AD /* shoePrintUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4DFA92882DA8EA430059B2AD /* shoePrint */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4D7388432DB1457C00955C66 /* Exceptions for "shoePrint" folder in "shoePrint" target */,
+				4D7388442DB1457C00955C66 /* Exceptions for "shoePrint" folder in "shoePrintUITests" target */,
+			);
 			path = shoePrint;
 			sourceTree = "<group>";
 		};
