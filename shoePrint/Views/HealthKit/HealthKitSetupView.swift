@@ -137,11 +137,21 @@ struct HealthKitSetupView: View {
             }
             .disabled(healthKitViewModel.isLoading)
             
-            if let errorMessage = healthKitViewModel.errorMessage {
+            if let errorMessage = healthKitViewModel.error {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundColor(.red)
                     .multilineTextAlignment(.center)
+            }
+            
+            // iOS Bug Workaround Button
+            if !healthKitViewModel.isPermissionGranted && !healthKitViewModel.isLoading {
+                Button("Try Workaround (iOS Bug)") {
+                    healthKitViewModel.overridePermissionStatus()
+                }
+                .font(.caption)
+                .foregroundColor(.blue)
+                .padding(.top, 8)
             }
         }
     }

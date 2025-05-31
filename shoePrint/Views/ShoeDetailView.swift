@@ -187,7 +187,10 @@ struct ShoeDetailView: View {
                 // Actions
                 VStack(spacing: 12) {
                     Button(action: {
-                        shoe.setActive(!shoe.isActive, in: context)
+                        Task {
+                            let sessionService = ShoeSessionService(modelContext: context)
+                            await sessionService.toggleSession(for: shoe)
+                        }
                     }) {
                         HStack {
                             Image(systemName: shoe.isActive ? "pause.circle.fill" : "play.circle.fill")

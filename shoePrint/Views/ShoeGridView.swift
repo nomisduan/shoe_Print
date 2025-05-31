@@ -94,16 +94,21 @@ struct ShoeGridView: View {
               
             LazyVGrid(columns: columns, spacing: 15) {
                 ForEach(activeShoes) { shoe in
-                    ShoeCardView(shoe: shoe) {
-                        shoeToDelete = shoe
-                        showDeleteAlert = true
-                    } onArchive: {
-                        shoeToArchive = shoe
-                        showArchiveAlert = true
-                    } onEdit: {
-                        shoeToEdit = shoe
-                        showEditSheet = true
-                    }
+                    ShoeCardView(
+                        shoe: shoe,
+                        onDelete: {
+                            shoeToDelete = shoe
+                            showDeleteAlert = true
+                        },
+                        onArchive: {
+                            shoeToArchive = shoe
+                            showArchiveAlert = true
+                        },
+                        onEdit: {
+                            shoeToEdit = shoe
+                            showEditSheet = true
+                        }
+                    )
                 }
             }
             }

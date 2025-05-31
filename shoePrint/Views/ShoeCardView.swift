@@ -68,11 +68,6 @@ struct ShoeCardView: View {
                     }
                     
                     Spacer()
-                    
-                    // Default shoe indicator aligned trailing
-                    if shoe.isDefault {
-                        DefaultShoeIndicator()
-                    }
                 }
                 
                 Spacer()
@@ -110,13 +105,16 @@ struct ShoeCardView: View {
             showingDetailSheet = true
         }
         .onLongPressGesture(minimumDuration: 0.3, maximumDistance: 10) {
-            // Long press completed: toggle active state
+            // Long press completed: toggle session (NEW ARCHITECTURE)
             let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
             impactFeedback.impactOccurred()
             
             // Change state and return to normal size immediately
             withAnimation(.easeOut(duration: 0.2)) {
-                shoe.setActive(!shoe.isActive, in: context)
+                Task {
+                    let sessionService = ShoeSessionService(modelContext: context)
+                    await sessionService.toggleSession(for: shoe)
+                }
                 // Return to normal size immediately
                 isLongPressing = false
                 isPressed = false
@@ -176,6 +174,30 @@ struct DefaultShoeIndicator: View {
         .padding(.vertical, 2)
         .background(Color.orange.opacity(0.2))
         .cornerRadius(8)
+    }
+}
+
+/// Stat item for displaying metrics with icon
+struct StatItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Text(value)
+                .font(.caption)
+                .fontWeight(.semibold)
+            
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

@@ -16,6 +16,7 @@ struct HealthDashboardView: View {
     @ObservedObject var healthKitViewModel: HealthKitViewModel
     @Query private var shoes: [Shoe]
     @Environment(\.modelContext) private var modelContext
+    @State private var shoeSessionService: ShoeSessionService?
     
     @State private var selectedDate = Date()
     @State private var showingDatePicker = false
@@ -82,10 +83,14 @@ struct HealthDashboardView: View {
                 BatchAttributionSheet(
                     selectedHours: selectedHours,
                     hourlySteps: hourlySteps,
-                    shoes: availableShoes
-                ) { shoe in
-                    await attributeSelectedHoursToShoe(shoe)
-                }
+                    shoes: availableShoes,
+                    onShoeSelected: { shoe in
+                        await attributeSelectedHoursToShoe(shoe)
+                    },
+                    onRemoveAttribution: {
+                        await removeSelectedHoursAttribution()
+                    }
+                )
             }
             .overlay(alignment: .bottom) {
                 // Floating attribute button when hours are selected
@@ -101,6 +106,11 @@ struct HealthDashboardView: View {
                     .cornerRadius(12)
                     .padding(.horizontal)
                     .padding(.bottom)
+                }
+            }
+            .onAppear {
+                if shoeSessionService == nil {
+                    shoeSessionService = ShoeSessionService(modelContext: modelContext)
                 }
             }
     }
@@ -189,7 +199,28 @@ private extension HealthDashboardView {
 private extension HealthDashboardView {
     
     func loadHourlyData() async {
-        hourlySteps = await healthKitViewModel.fetchHourlySteps(for: selectedDate)
+        // Get raw HealthKit data
+        let rawHealthKitData = await healthKitViewModel.fetchHourlySteps(for: selectedDate)
+        print("🔍 DEBUG: Loaded \(rawHealthKitData.count) raw HealthKit data points")
+        
+        // Use ShoeSessionService to add session-based shoe attributions
+        if let service = shoeSessionService {
+            hourlySteps = await service.getHourlyStepDataForDate(selectedDate, healthKitData: rawHealthKitData)
+            print("🔍 DEBUG: After session enrichment: \(hourlySteps.count) data points")
+            
+            // Debug: Print attribution status for each hour
+            for (index, hourData) in hourlySteps.enumerated() {
+                if let shoe = hourData.assignedShoe {
+                    print("🔍 DEBUG: Hour \(hourData.timeString) attributed to \(shoe.brand) \(shoe.model)")
+                } else {
+                    print("🔍 DEBUG: Hour \(hourData.timeString) not attributed")
+                }
+            }
+        } else {
+            hourlySteps = rawHealthKitData
+            print("🔍 DEBUG: No ShoeSessionService available, using raw data")
+        }
+        
         selectedHours.removeAll()
     }
     
@@ -197,10 +228,13 @@ private extension HealthDashboardView {
         let hourData = hourlySteps[index]
         
         Task {
-            await healthKitViewModel.attributeHourlyStepsToShoe(hourData, to: shoe)
+            guard let service = shoeSessionService else { return }
             
-            // Update local state
-            hourlySteps[index].assignedShoe = shoe
+            // Create a session for this specific hour
+            await service.createHourSession(for: shoe, hourDate: hourData.date)
+            
+            // Reload the data to reflect the session-based attribution
+            await loadHourlyData()
             
             print("✅ Attributed \(hourData.steps) steps at \(hourData.timeString) to \(shoe.brand) \(shoe.model)")
         }
@@ -232,20 +266,37 @@ private extension HealthDashboardView {
     }
     
     func attributeSelectedHoursToShoe(_ shoe: Shoe) async {
-        let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
+        guard let service = shoeSessionService else { return }
         
-        for hourData in selectedHourData {
-            await healthKitViewModel.attributeHourlyStepsToShoe(hourData, to: shoe)
-            
-            // Update local state
-            if let index = hourlySteps.firstIndex(where: { $0.id == hourData.id }) {
-                hourlySteps[index].assignedShoe = shoe
-            }
-        }
+        let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
+        let hourDates = selectedHourData.map(\.date)
+        
+        // Create sessions for all selected hours
+        await service.createHourSessions(for: shoe, hourDates: hourDates)
+        
+        // Reload the data to reflect the session-based attribution
+        await loadHourlyData()
         
         exitSelectionMode()
         
         print("✅ Batch attributed \(selectedHourData.count) hours to \(shoe.brand) \(shoe.model)")
+    }
+    
+    func removeSelectedHoursAttribution() async {
+        guard let service = shoeSessionService else { return }
+        
+        let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
+        
+        for hourData in selectedHourData {
+            await service.removeHourAttribution(for: hourData.date)
+        }
+        
+        // Reload the data to reflect the session-based attribution
+        await loadHourlyData()
+        
+        exitSelectionMode()
+        
+        print("🗑️ Removed attribution for \(selectedHourData.count) hours")
     }
 }
 
@@ -381,6 +432,7 @@ struct BatchAttributionSheet: View {
     let hourlySteps: [HourlyStepData]
     let shoes: [Shoe]
     let onShoeSelected: (Shoe) async -> Void
+    let onRemoveAttribution: () async -> Void
     
     @Environment(\.dismiss) private var dismiss
     
@@ -446,6 +498,28 @@ struct BatchAttributionSheet: View {
                     }
                     .padding(.horizontal, 16)
                 }
+                
+                // Remove attribution option
+                Button {
+                    Task {
+                        await onRemoveAttribution()
+                        dismiss()
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text("Remove Attribution")
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red.opacity(0.1))
+                    .foregroundColor(.red)
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
                 
                 Spacer()
             }

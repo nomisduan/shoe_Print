@@ -38,11 +38,15 @@ class HealthKitManager: ObservableObject {
     private let stepType = HKQuantityType(.stepCount)
     private let distanceType = HKQuantityType(.distanceWalkingRunning)
     
+    // UserDefaults key for persisting override status
+    private let authOverrideKey = "HealthKitAuthorizationOverride"
+    
     // MARK: - Initialization
     
     init() {
         checkHealthKitAvailability()
         checkCurrentAuthorizationStatus()
+        loadPersistedAuthorizationStatus()
     }
     
     // MARK: - Public API
@@ -81,6 +85,7 @@ class HealthKitManager: ObservableObject {
     func overrideAuthorizationStatus(to authorized: Bool) {
         print("🔓 HealthKitManager: Overriding authorization status to \(authorized)")
         isAuthorized = authorized
+        savePersistedAuthorizationStatus(authorized)
     }
     
     /// Fetches hourly step and distance data for a specific date
@@ -151,6 +156,21 @@ private extension HealthKitManager {
             print("✅ HealthKitManager: Data fetch successful, updating authorization status")
             isAuthorized = true
         }
+    }
+    
+    func loadPersistedAuthorizationStatus() {
+        if UserDefaults.standard.object(forKey: authOverrideKey) != nil {
+            let savedStatus = UserDefaults.standard.bool(forKey: authOverrideKey)
+            if savedStatus {
+                print("🔓 HealthKitManager: Loading persisted authorization override (true)")
+                isAuthorized = true
+            }
+        }
+    }
+    
+    func savePersistedAuthorizationStatus(_ authorized: Bool) {
+        UserDefaults.standard.set(authorized, forKey: authOverrideKey)
+        print("🔓 HealthKitManager: Saved authorization status: \(authorized)")
     }
 }
 

@@ -17,15 +17,17 @@ final class Shoe {
     var icon: String
     var color: String
     var archived: Bool
-    var isActive: Bool // Currently worn shoe
     var isDefault: Bool // Default shoe for automatic daily activation
-    var activatedAt: Date? // Timestamp when the shoe was activated
     var purchaseDate: Date?
     var purchasePrice: Double?
     var estimatedLifespan: Double // in kilometers
     var entries: [StepEntry]
     
-    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isActive: Bool = false, isDefault: Bool = false, activatedAt: Date? = nil, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
+    // MARK: - Session Relationship
+    @Relationship(deleteRule: .cascade, inverse: \ShoeSession.shoe)
+    var sessions: [ShoeSession] = []
+
+    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isDefault: Bool = false, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
         self.timestamp = timestamp
         self.brand = brand
         self.model = model
@@ -33,13 +35,57 @@ final class Shoe {
         self.icon = icon
         self.color = color
         self.archived = archived
-        self.isActive = isActive
         self.isDefault = isDefault
-        self.activatedAt = activatedAt
         self.purchaseDate = purchaseDate
         self.purchasePrice = purchasePrice
         self.estimatedLifespan = estimatedLifespan
         self.entries = entries
+    }
+    
+    // MARK: - Session-based Computed Properties
+    
+    /// Returns the currently active session, if any
+    var activeSession: ShoeSession? {
+        sessions.first(where: { $0.isActive })
+    }
+    
+    /// Returns true if this shoe has an active session (currently being worn)
+    var isActive: Bool {
+        activeSession != nil
+    }
+    
+    /// Returns the timestamp when the shoe was last activated (for compatibility)
+    var activatedAt: Date? {
+        activeSession?.startDate
+    }
+    
+    /// Returns all sessions for today
+    var todaySessions: [ShoeSession] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? Date()
+        
+        return sessions.filter { session in
+            session.overlaps(start: today, end: tomorrow)
+        }
+    }
+    
+    /// Returns the total time worn today in hours
+    var todayWearTime: Double {
+        todaySessions.reduce(0) { total, session in
+            let sessionEnd = session.endDate ?? Date()
+            let today = Calendar.current.startOfDay(for: Date())
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? Date()
+            
+            // Clamp session to today's bounds
+            let clampedStart = max(session.startDate, today)
+            let clampedEnd = min(sessionEnd, tomorrow)
+            
+            if clampedStart < clampedEnd {
+                return total + clampedEnd.timeIntervalSince(clampedStart) / 3600.0
+            }
+            return total
+        }
     }
     
     // MARK: - Computed Properties
@@ -75,57 +121,10 @@ final class Shoe {
     
     func archive() {
         archived = true
-        isActive = false // Archived shoe cannot be active
     }
     
     func unarchive() {
         archived = false
-    }
-    
-    /// Safely sets this shoe as active, ensuring only one shoe is active at a time
-    /// - Parameters:
-    ///   - active: Whether to make this shoe active
-    ///   - modelContext: SwiftData context to fetch and update other shoes
-    func setActive(_ active: Bool, in modelContext: ModelContext) {
-        guard !archived else { 
-            print("⚠️ Cannot activate archived shoe: \(brand) \(model)")
-            return 
-        }
-        
-        if active {
-            // Deactivate all other shoes first
-            deactivateAllOtherShoes(in: modelContext)
-            isActive = true
-            activatedAt = Date() // Set activation timestamp for future data attribution
-            print("✅ Activated shoe: \(brand) \(model) at \(activatedAt!)")
-        } else {
-            isActive = false
-            activatedAt = nil // Clear activation timestamp
-            print("➖ Deactivated shoe: \(brand) \(model)")
-        }
-    }
-    
-    /// Deactivates all other shoes in the database
-    private func deactivateAllOtherShoes(in modelContext: ModelContext) {
-        let descriptor = FetchDescriptor<Shoe>(
-            predicate: #Predicate<Shoe> { shoe in
-                shoe.isActive == true
-            }
-        )
-        
-        do {
-            let activeShoes = try modelContext.fetch(descriptor)
-            for shoe in activeShoes {
-                if shoe.persistentModelID != self.persistentModelID {
-                    shoe.isActive = false
-                    shoe.activatedAt = nil // Clear activation timestamp
-                    print("➖ Deactivated shoe: \(shoe.brand) \(shoe.model)")
-                }
-            }
-            try modelContext.save()
-        } catch {
-            print("❌ Error deactivating other shoes: \(error)")
-        }
     }
     
     /// Safely sets this shoe as default, ensuring only one shoe is default at a time

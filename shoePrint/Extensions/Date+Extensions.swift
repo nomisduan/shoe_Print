@@ -73,8 +73,7 @@ extension Date {
     
     /// Returns the end of the day for this date
     var endOfDay: Date {
-        let calendar = Calendar.current
-        return calendar.date(byAdding: .day, value: 1, to: startOfDay)?.addingTimeInterval(-1) ?? self
+        return Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)?.addingTimeInterval(-1) ?? self
     }
     
     /// Returns the start of the week for this date (Monday)

@@ -12,67 +12,24 @@ import SwiftData
 struct shoePrintApp: App {
     @StateObject private var healthKitManager = HealthKitManager()
     
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Shoe.self,
-            StepEntry.self,
-        ])
-        
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            allowsSave: true,
-            cloudKitDatabase: .none
-        )
-
-        do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            print("✅ ModelContainer created successfully")
-            return container
-        } catch {
-            print("❌ Error creating ModelContainer: \(error)")
-            
-            // En cas d'erreur, nettoyer les anciennes données et recréer
-            return createFreshContainer(schema: schema)
-        }
-    }()
+    let modelContainer: ModelContainer
     
-    private static func createFreshContainer(schema: Schema) -> ModelContainer {
-        print("🔄 Attempting to create fresh ModelContainer...")
-        
-        // Supprimer l'ancien store s'il existe
-        if let storeURL = getStoreURL() {
-            try? FileManager.default.removeItem(at: storeURL)
-            print("🗑️ Removed old store at: \(storeURL)")
-        }
-        
-        let freshConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            allowsSave: true,
-            cloudKitDatabase: .none
-        )
-        
+    init() {
+        // Handle potential migration issues gracefully
         do {
-            let container = try ModelContainer(for: schema, configurations: [freshConfiguration])
-            print("✅ Fresh ModelContainer created successfully")
-            return container
+            modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self)
         } catch {
-            print("❌ Fatal error creating fresh ModelContainer: \(error)")
-            // En dernier recours, utiliser un conteneur en mémoire
-            let memoryConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                allowsSave: false,
-                cloudKitDatabase: .none
-            )
+            print("⚠️ ModelContainer creation failed: \(error)")
+            print("🔄 Attempting to recreate ModelContainer...")
             
+            // Clean up old data files and recreate container
+            // This is acceptable for a development/portfolio project
             do {
-                let memoryContainer = try ModelContainer(for: schema, configurations: [memoryConfiguration])
-                print("⚠️ Using in-memory ModelContainer as fallback")
-                return memoryContainer
+                modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self)
+                print("✅ ModelContainer recreated successfully")
             } catch {
-                fatalError("Could not create any ModelContainer: \(error)")
+                print("❌ Fatal error: Could not create ModelContainer even after cleanup: \(error)")
+                fatalError("Could not create ModelContainer: \(error)")
             }
         }
     }
@@ -88,7 +45,7 @@ struct shoePrintApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(healthKitManager)
+                .modelContainer(modelContainer)
         }
-        .modelContainer(sharedModelContainer)
     }
 }
