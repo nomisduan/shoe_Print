@@ -57,13 +57,8 @@ struct ShoeDetailView: View {
                             .foregroundColor(.secondary)
                         
                         if shoe.isActive {
-                            HStack {
-                                Image(systemName: "circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Wearing")
-                                    .fontWeight(.medium)
-                            }
-                            .padding(.top, 4)
+                            WearingIndicatorDetail()
+                                .padding(.top, 4)
                         }
                     }
                     
@@ -298,6 +293,30 @@ struct StatCard: View {
         .padding()
         .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
+    }
+}
+
+/// Detail view animated wearing indicator with pulse effect
+struct WearingIndicatorDetail: View {
+    @State private var isPulsing = false
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "circle.fill")
+                .foregroundColor(.green)
+                .scaleEffect(isPulsing ? 1.2 : 1.0)
+                .opacity(isPulsing ? 0.6 : 1.0)
+                .animation(
+                    Animation.easeInOut(duration: 1.0)
+                        .repeatForever(autoreverses: true),
+                    value: isPulsing
+                )
+            Text("Wearing")
+                .fontWeight(.medium)
+        }
+        .onAppear {
+            isPulsing = true
+        }
     }
 }
 

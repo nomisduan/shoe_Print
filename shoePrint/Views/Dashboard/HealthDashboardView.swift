@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 
-/// Clean and intuitive health dashboard for hourly step attribution to shoes
+/// Visual journal for hourly step attribution to shoes
 struct HealthDashboardView: View {
     
     // MARK: - Properties
@@ -20,27 +20,89 @@ struct HealthDashboardView: View {
     @State private var selectedDate = Date()
     @State private var showingDatePicker = false
     @State private var hourlySteps: [HourlyStepData] = []
+    @State private var selectedHours: Set<UUID> = []
+    @State private var isSelectionMode = false
+    @State private var showingBatchAttributionSheet = false
     
     // MARK: - Body
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                dateSelector
-                
-                contentView
-                
-                Spacer()
-            }
-            .navigationTitle("Health")
+        contentView
+            .navigationTitle("Journal")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if isSelectionMode {
+                        Button {
+                            if selectedHours.count == hourlySteps.count {
+                                selectedHours.removeAll()
+                            } else {
+                                selectedHours = Set(hourlySteps.map(\.id))
+                            }
+                        } label: {
+                            Text("Select All")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.accentColor)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.gray.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    // Select/Cancel capsule button
+                    Button {
+                        if isSelectionMode {
+                            exitSelectionMode()
+                        } else {
+                            enterSelectionMode()
+                        }
+                    } label: {
+                        Text(isSelectionMode ? "Cancel" : "Select")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.gray.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
             .task {
                 await loadHourlyData()
             }
             .refreshable {
                 await loadHourlyData()
             }
-        }
+            .sheet(isPresented: $showingBatchAttributionSheet) {
+                BatchAttributionSheet(
+                    selectedHours: selectedHours,
+                    hourlySteps: hourlySteps,
+                    shoes: availableShoes
+                ) { shoe in
+                    await attributeSelectedHoursToShoe(shoe)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                // Floating attribute button when hours are selected
+                if isSelectionMode && !selectedHours.isEmpty {
+                    Button("Attribute \(selectedHours.count) hours") {
+                        showingBatchAttributionSheet = true
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    .padding(.bottom)
+                }
+            }
     }
 }
 
@@ -55,7 +117,7 @@ private extension HealthDashboardView {
         } else if hourlySteps.isEmpty {
             EmptyDataView()
         } else {
-            hourlyStepsList
+            hourlyStepsJournal
         }
     }
     
@@ -75,8 +137,8 @@ private extension HealthDashboardView {
                     .foregroundColor(.blue)
             }
         }
-        .padding()
-        .background(Color(UIColor.systemBackground))
+        .padding(.horizontal)
+        .padding(.vertical, 12)
         .sheet(isPresented: $showingDatePicker) {
             DatePickerSheet(selectedDate: $selectedDate) {
                 Task { await loadHourlyData() }
@@ -84,23 +146,41 @@ private extension HealthDashboardView {
         }
     }
     
-    var hourlyStepsList: some View {
-        List {
-            ForEach(Array(hourlySteps.enumerated()), id: \.element.id) { index, hourData in
-                HourlyStepRow(
-                    hourData: hourData,
-                    shoes: availableShoes,
-                    onShoeSelected: { shoe in
-                        attributeStepsToShoe(at: index, shoe: shoe)
+    var hourlyStepsJournal: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Date selector header - scrollable comme les indicateurs dans Collection
+                dateSelector
+                
+                // Journal content
+                LazyVStack(spacing: 12) {
+                    ForEach(Array(hourlySteps.enumerated()), id: \.element.id) { index, hourData in
+                        HourlyStepBarView(
+                            hourData: hourData,
+                            maxSteps: maxStepsInDay,
+                            isSelected: selectedHours.contains(hourData.id),
+                            isSelectionMode: isSelectionMode,
+                            onTap: {
+                                toggleSelection(for: hourData.id)
+                            },
+                            onAttributionTap: {
+                                showAttributionSheet(for: index)
+                            }
+                        )
                     }
-                )
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
             }
         }
-        .listStyle(PlainListStyle())
     }
     
     var availableShoes: [Shoe] {
         shoes.filter { !$0.archived }
+    }
+    
+    var maxStepsInDay: Int {
+        hourlySteps.map(\.steps).max() ?? 1
     }
 }
 
@@ -110,6 +190,7 @@ private extension HealthDashboardView {
     
     func loadHourlyData() async {
         hourlySteps = await healthKitViewModel.fetchHourlySteps(for: selectedDate)
+        selectedHours.removeAll()
     }
     
     func attributeStepsToShoe(at index: Int, shoe: Shoe) {
@@ -124,9 +205,260 @@ private extension HealthDashboardView {
             print("✅ Attributed \(hourData.steps) steps at \(hourData.timeString) to \(shoe.brand) \(shoe.model)")
         }
     }
+    
+    func showAttributionSheet(for index: Int) {
+        // Create and show a single attribution sheet
+        // We'll implement this with a state variable to track which hour to attribute
+        showingBatchAttributionSheet = true
+        selectedHours = [hourlySteps[index].id]
+    }
+    
+    func enterSelectionMode() {
+        isSelectionMode = true
+        selectedHours.removeAll()
+    }
+    
+    func exitSelectionMode() {
+        isSelectionMode = false
+        selectedHours.removeAll()
+    }
+    
+    func toggleSelection(for hourId: UUID) {
+        if selectedHours.contains(hourId) {
+            selectedHours.remove(hourId)
+        } else {
+            selectedHours.insert(hourId)
+        }
+    }
+    
+    func attributeSelectedHoursToShoe(_ shoe: Shoe) async {
+        let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
+        
+        for hourData in selectedHourData {
+            await healthKitViewModel.attributeHourlyStepsToShoe(hourData, to: shoe)
+            
+            // Update local state
+            if let index = hourlySteps.firstIndex(where: { $0.id == hourData.id }) {
+                hourlySteps[index].assignedShoe = shoe
+            }
+        }
+        
+        exitSelectionMode()
+        
+        print("✅ Batch attributed \(selectedHourData.count) hours to \(shoe.brand) \(shoe.model)")
+    }
 }
 
 // MARK: - Supporting Views
+
+/// Visual bar representation of hourly step data
+struct HourlyStepBarView: View {
+    let hourData: HourlyStepData
+    let maxSteps: Int
+    let isSelected: Bool
+    let isSelectionMode: Bool
+    let onTap: () -> Void
+    let onAttributionTap: () -> Void
+    
+    private var maxBarWidth: CGFloat {
+        let screenWidth = UIScreen.main.bounds.width
+        let padding: CGFloat = isSelectionMode ? 140 : 100 // Account for checkmark, padding, distance column, and margins
+        return screenWidth - padding
+    }
+    
+    private var barWidth: CGFloat {
+        let ratio = CGFloat(hourData.steps) / CGFloat(max(maxSteps, 1))
+        let calculatedWidth = maxBarWidth * ratio
+        return max(60, min(calculatedWidth, maxBarWidth)) // Minimum 60, maximum maxBarWidth
+    }
+    
+    private var barHeight: CGFloat {
+        50 // Taller rectangles
+    }
+    
+    private var barColor: Color {
+        if let shoe = hourData.assignedShoe {
+            // Use the color directly from Assets.xcassets (CustomPurple, CustomBlue, etc.)
+            return Color(shoe.color)
+        } else {
+            return Color.clear
+        }
+    }
+    
+    private var strokeColor: Color {
+        if isSelected {
+            return .blue
+        } else if hourData.assignedShoe != nil {
+            return Color.clear
+        } else {
+            return .gray
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Selection checkbox
+            if isSelectionMode {
+                Button {
+                    onTap()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundColor(isSelected ? .blue : .gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            
+            // Step bar rectangle
+            RoundedRectangle(cornerRadius: 12)
+                .fill(barColor)
+                .stroke(strokeColor, lineWidth: isSelected ? 3 : (hourData.assignedShoe == nil ? 1.5 : 0))
+                .frame(width: barWidth, height: barHeight)
+                .overlay(
+                    VStack {
+                        Spacer()
+                        rectangleContent
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6),
+                    alignment: .bottomLeading
+                )
+                .animation(.easeInOut(duration: 0.2), value: barWidth)
+                .animation(.easeInOut(duration: 0.2), value: barColor)
+                .animation(.easeInOut(duration: 0.2), value: isSelected)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isSelectionMode {
+                        onTap()
+                    } else {
+                        onAttributionTap()
+                    }
+                }
+            
+            Spacer()
+            
+            // Distance display aligned to the right
+            distanceDisplay
+        }
+    }
+    
+    @ViewBuilder
+    private var rectangleContent: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Shoe emoji if attributed
+            if let shoe = hourData.assignedShoe {
+                Text(shoe.icon)
+                    .font(.title3)
+            }
+            
+            // Hour label
+            Text(hourData.timeString)
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.medium)
+        }
+    }
+    
+    private var distanceDisplay: some View {
+        let distance = Double(hourData.steps) * 0.000762
+        let formattedDistance = distance < 1.0 ? String(format: "%.1f", distance) : String(format: "%.0f", distance)
+        
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(formattedDistance)
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundColor(.primary)
+            
+            Text("km")
+                .font(.system(size: 10, weight: .regular))
+                .foregroundColor(.secondary)
+        }
+        .frame(width: 40, alignment: .leading)
+    }
+}
+
+/// Sheet for batch attribution of selected hours
+struct BatchAttributionSheet: View {
+    let selectedHours: Set<UUID>
+    let hourlySteps: [HourlyStepData]
+    let shoes: [Shoe]
+    let onShoeSelected: (Shoe) async -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    private var selectedHourData: [HourlyStepData] {
+        hourlySteps.filter { selectedHours.contains($0.id) }
+    }
+    
+    private var totalSteps: Int {
+        selectedHourData.reduce(0) { $0 + $1.steps }
+    }
+    
+    private var totalDistance: Double {
+        // Estimate: roughly 0.762 meters per step (average adult)
+        Double(totalSteps) * 0.000762 // Convert to kilometers
+    }
+    
+    private var timeRange: String {
+        let sortedHours = selectedHourData.sorted { $0.hour < $1.hour }
+        
+        if sortedHours.isEmpty {
+            return ""
+        } else if sortedHours.count == 1 {
+            return sortedHours.first!.timeString
+        } else {
+            return "\(sortedHours.first!.timeString) - \(sortedHours.last!.timeString)"
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Time and distance info
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(timeRange)
+                        .font(.title2)
+                        .fontWeight(.medium)
+                    
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text(String(format: "%.1f", totalDistance))
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text("km")
+                            .font(.title2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Shoe selection grid
+                ScrollView {
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 8),
+                        GridItem(.flexible(), spacing: 8)
+                    ], spacing: 16) {
+                        ForEach(shoes) { shoe in
+                            MiniShoeCardView(shoe: shoe) {
+                                Task {
+                                    await onShoeSelected(shoe)
+                                    dismiss()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                
+                Spacer()
+            }
+            .navigationTitle("Attributing \(selectedHours.count) hours")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
 
 /// Permission request view for HealthKit access
 struct HealthPermissionView: View {
@@ -138,17 +470,17 @@ struct HealthPermissionView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
             
-            Text("Accès HealthKit requis")
+            Text("HealthKit Access Required")
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Autorisez l'accès aux données de santé pour voir vos pas par heure")
+            Text("Allow access to health data to see your hourly steps")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             
-            Button("Autoriser l'accès") {
+            Button("Allow Access") {
                 Task {
                     await healthKitViewModel.requestPermissions()
                 }
@@ -167,114 +499,16 @@ struct EmptyDataView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
             
-            Text("Aucune donnée")
+            Text("No Data")
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Aucune activité détectée pour cette date")
+            Text("No activity detected for this date")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
         .padding()
-    }
-}
-
-/// Row view for displaying hourly step data with shoe attribution
-struct HourlyStepRow: View {
-    @State private var hourData: HourlyStepData
-    let shoes: [Shoe]
-    let onShoeSelected: (Shoe) -> Void
-    
-    @State private var showingShoeSelector = false
-    
-    init(hourData: HourlyStepData, shoes: [Shoe], onShoeSelected: @escaping (Shoe) -> Void) {
-        self._hourData = State(initialValue: hourData)
-        self.shoes = shoes
-        self.onShoeSelected = onShoeSelected
-    }
-    
-    var body: some View {
-        HStack {
-            timeView
-            stepsView
-            Spacer()
-            attributionView
-        }
-        .padding(.vertical, 8)
-        .sheet(isPresented: $showingShoeSelector) {
-            ShoeSelectionSheet(shoes: shoes) { selectedShoe in
-                onShoeSelected(selectedShoe)
-                hourData.assignedShoe = selectedShoe
-            }
-        }
-    }
-}
-
-// MARK: - HourlyStepRow Components
-
-private extension HourlyStepRow {
-    
-    var timeView: some View {
-        Text(hourData.timeString)
-            .font(.system(.body, design: .monospaced))
-            .fontWeight(.medium)
-            .frame(width: 60, alignment: .leading)
-    }
-    
-    var stepsView: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(hourData.steps)")
-                .font(.headline)
-                .fontWeight(.semibold)
-            Text("pas")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-    
-    @ViewBuilder
-    var attributionView: some View {
-        if let assignedShoe = hourData.assignedShoe {
-            assignedShoeView(assignedShoe)
-        } else {
-            attributionButton
-        }
-    }
-    
-    func assignedShoeView(_ shoe: Shoe) -> some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Color(hex: shoe.color) ?? .blue)
-                .frame(width: 12, height: 12)
-            
-            Text("\(shoe.brand) \(shoe.model)")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.primary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(8)
-        .onTapGesture {
-            showingShoeSelector = true
-        }
-    }
-    
-    var attributionButton: some View {
-        Button {
-            showingShoeSelector = true
-        } label: {
-            Text("Attribuer")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.blue)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(8)
-        }
     }
 }
 
@@ -288,7 +522,7 @@ struct DatePickerSheet: View {
         NavigationView {
             VStack {
                 DatePicker(
-                    "Sélectionner une date",
+                    "Select Date",
                     selection: $selectedDate,
                     in: ...Date(),
                     displayedComponents: .date
@@ -298,11 +532,11 @@ struct DatePickerSheet: View {
                 
                 Spacer()
             }
-            .navigationTitle("Choisir une date")
+            .navigationTitle("Choose Date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Annuler") { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -311,33 +545,6 @@ struct DatePickerSheet: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-}
-
-/// Sheet for selecting a shoe to attribute steps to
-struct ShoeSelectionSheet: View {
-    let shoes: [Shoe]
-    let onShoeSelected: (Shoe) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationView {
-            List {
-                ForEach(shoes) { shoe in
-                    ShoeSelectionRowView(shoe: shoe) {
-                        onShoeSelected(shoe)
-                        dismiss()
-                    }
-                }
-            }
-            .navigationTitle("Choisir une paire")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Annuler") { dismiss() }
                 }
             }
         }
@@ -354,6 +561,9 @@ struct ShoeSelectionRowView: View {
             Circle()
                 .fill(Color(hex: shoe.color) ?? .blue)
                 .frame(width: 20, height: 20)
+            
+            Text(shoe.icon)
+                .font(.title2)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(shoe.brand) \(shoe.model)")
@@ -380,7 +590,7 @@ struct ShoeSelectionRowView: View {
 /// Active shoe indicator label
 struct ActiveShoeLabel: View {
     var body: some View {
-        Text("Actif")
+        Text("Active")
             .font(.caption)
             .fontWeight(.medium)
             .foregroundColor(.green)

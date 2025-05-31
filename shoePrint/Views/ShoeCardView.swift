@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct ShoeCardView: View {
-    let shoe : Shoe
+    let shoe: Shoe
     var onDelete: () -> Void = {}
     var onArchive: () -> Void = {}
     var onEdit: () -> Void = {}
@@ -19,7 +19,7 @@ struct ShoeCardView: View {
     @State private var isPressed = false
     @State private var isLongPressing = false
     
-    // Gestion des unités selon les réglages locaux
+    // Distance formatting logic
     private var distanceUnit: String {
         let formatter = MeasurementFormatter()
         let measurement = Measurement(value: 1000, unit: UnitLength.meters)
@@ -28,14 +28,14 @@ struct ShoeCardView: View {
     }
     
     private var formattedDistance: String {
-        let distanceInMeters = shoe.totalDistance * 1000 // shoe.totalDistance est en km
+        let distanceInMeters = shoe.totalDistance * 1000 // shoe.totalDistance is in km
         let measurement = Measurement(value: distanceInMeters, unit: UnitLength.meters)
         
         let formatter = MeasurementFormatter()
         formatter.unitStyle = .short
         formatter.numberFormatter.maximumFractionDigits = 0
         
-        // Convertir vers l'unité appropriée selon les réglages
+        // Convert to appropriate unit based on locale settings
         if distanceUnit == "mi" {
             let milesValue = measurement.converted(to: .miles).value
             return String(format: "%.0f", milesValue)
@@ -55,19 +55,12 @@ struct ShoeCardView: View {
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: isLongPressing)
 
             VStack(alignment: .leading) {
-                HStack{
-                    // Voyant active en haut aligné leading
+                HStack {
+                    // Active indicator aligned leading
                     if shoe.isActive {
-                        HStack {
-                            Image(systemName: "circle.fill")
-                                .foregroundColor(.green)
-                                .font(.caption)
-                            Text("Wearing")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                        }
+                        WearingIndicator()
                     } else {
-                        // Espace vide pour garder l'alignement
+                        // Empty space to maintain alignment
                         HStack {
                             Text("")
                                 .font(.caption)
@@ -79,12 +72,13 @@ struct ShoeCardView: View {
                 
                 Spacer()
                 
-                // Emoji centré
+                // Centered emoji
                 Text(shoe.icon)
                     .font(.system(size: 70))
                     .frame(maxWidth: .infinity, alignment: .center)
                 
                 Spacer()
+                
                 VStack(alignment: .leading, spacing: 4) {
                     Text(shoe.brand.uppercased())
                         .font(.title3)
@@ -102,10 +96,10 @@ struct ShoeCardView: View {
                     }
                 }
             }
-            .padding() // ajoute de l'espace intérieur
-            .frame(maxWidth: .infinity, alignment: .leading) // aligne à gauche dans le ZStack
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 190, height: 250) // pour que le ZStack soit bien taillé
+        .frame(width: 190, height: 250)
         .onTapGesture {
             // Tap simple : ouvrir details
             showingDetailSheet = true
@@ -132,6 +126,32 @@ struct ShoeCardView: View {
             NavigationView {
                 ShoeDetailView(shoe: shoe)
             }
+        }
+    }
+}
+
+/// Animated wearing indicator with pulse effect
+struct WearingIndicator: View {
+    @State private var isPulsing = false
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "circle.fill")
+                .foregroundColor(.green)
+                .font(.caption)
+                .scaleEffect(isPulsing ? 1.2 : 1.0)
+                .opacity(isPulsing ? 0.6 : 1.0)
+                .animation(
+                    Animation.easeInOut(duration: 1.0)
+                        .repeatForever(autoreverses: true),
+                    value: isPulsing
+                )
+            Text("Wearing")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .onAppear {
+            isPulsing = true
         }
     }
 }

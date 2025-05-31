@@ -23,41 +23,62 @@ struct MainView: View {
     
     var body: some View {
         TabView {
-            NavigationStack {
-                
-                ShoeGridView(shoeToDelete: $shoeToDelete,
-                             showDeleteAlert: $showDeleteAlert,
-                             shoeToArchive: $shoeToArchive,
-                             showArchiveAlert: $showArchiveAlert,
-                             shoeToEdit: $shoeToEdit,
-                             showEditSheet: $showEditSheet
-                )
-                .navigationTitle("Collection")
-                .toolbar {
-                    Button("Add") {
-                        showingAddSheet.toggle()
+            Group {
+                NavigationStack {
+                    
+                    ShoeGridView(shoeToDelete: $shoeToDelete,
+                                 showDeleteAlert: $showDeleteAlert,
+                                 shoeToArchive: $shoeToArchive,
+                                 showArchiveAlert: $showArchiveAlert,
+                                 shoeToEdit: $shoeToEdit,
+                                 showEditSheet: $showEditSheet
+                    )
+                    .background(Color(UIColor.systemGroupedBackground))
+                    .navigationTitle("Collection")
+                    .toolbar {
+                        Button {
+                            showingAddSheet.toggle()
+                        } label: {
+                            Text("Add")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.accentColor)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.gray.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
                     }
                 }
-            }
-            .tabItem { Label("Collection", systemImage: "shoe.2") }
-            
-            // Health Dashboard Tab
-            if let viewModel = healthKitViewModel {
-                HealthDashboardView(healthKitViewModel: viewModel)
-                    .tabItem { Label("Health", systemImage: "heart") }
-            } else {
-                // Loading placeholder
-                Text("Loading Health Integration...")
-                    .tabItem { Label("Health", systemImage: "heart") }
-            }
-            
-            NavigationStack {
-                ShoeListView()
-                    .navigationTitle("Archive")
-            }
+                .tabItem { Label("Collection", systemImage: "shoe.2") }
+                
+                // Health Dashboard Tab
+                if let viewModel = healthKitViewModel {
+                    NavigationStack {
+                        HealthDashboardView(healthKitViewModel: viewModel)
+                            .background(Color(UIColor.systemGroupedBackground))
+                    }
+                    .tabItem { Label("Journal", systemImage: "checklist") }
+                } else {
+                    // Loading placeholder
+                    NavigationStack {
+                        Text("Loading Health Integration...")
+                            .background(Color(UIColor.systemGroupedBackground))
+                    }
+                    .tabItem { Label("Journal", systemImage: "checklist") }
+                }
+                
+                NavigationStack {
+                    ShoeListView()
+                        .background(Color(UIColor.systemGroupedBackground))
+                        .navigationTitle("Archive")
+                }
                 .tabItem {
                     Label("Archive", systemImage: "archivebox")
                 }
+            }
+            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
         }
         .onAppear {
             // Initialize the HealthKit ViewModel with the current model context
