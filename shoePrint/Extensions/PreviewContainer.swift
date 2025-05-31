@@ -35,6 +35,18 @@ struct PreviewContainer {
     }
     
     private static func addSampleData(to context: ModelContext) {
+        // Default Barefoot shoe for all users
+        let barefoot = Shoe(
+            brand: "Barefoot",
+            model: "Your Feet",
+            notes: "Default shoe for everyone",
+            icon: "🦶",
+            color: "CustomBlue",
+            archived: false,
+            isDefault: true,
+            estimatedLifespan: 1000.0
+        )
+        
         // Sample step entries - create these first
         let today = Date()
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today
@@ -127,7 +139,8 @@ struct PreviewContainer {
         entry5.shoe = adidas
         entry6.shoe = asics
         
-        // Insert everything into context
+        // Insert everything into context - Barefoot first so it's the default
+        context.insert(barefoot)
         context.insert(nike)
         context.insert(adidas)
         context.insert(asics)
