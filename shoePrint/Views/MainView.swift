@@ -17,6 +17,10 @@ struct MainView: View {
     @State private var shoeToEdit: Shoe?
     @State private var showEditSheet = false
     
+    // HealthKit integration
+    @StateObject private var healthKitManager = HealthKitManager()
+    @State private var healthKitViewModel: HealthKitViewModel?
+    
     var body: some View {
         TabView {
             NavigationStack {
@@ -36,6 +40,17 @@ struct MainView: View {
                 }
             }
             .tabItem { Label("Collection", systemImage: "shoe.2") }
+            
+            // Health Dashboard Tab
+            if let viewModel = healthKitViewModel {
+                HealthDashboardView(healthKitViewModel: viewModel)
+                    .tabItem { Label("Health", systemImage: "heart") }
+            } else {
+                // Loading placeholder
+                Text("Loading Health Integration...")
+                    .tabItem { Label("Health", systemImage: "heart") }
+            }
+            
             NavigationStack {
                 ShoeListView()
                     .navigationTitle("Archive")
@@ -44,9 +59,19 @@ struct MainView: View {
                     Label("Archive", systemImage: "archivebox")
                 }
         }
+        .onAppear {
+            // Initialize the HealthKit ViewModel with the current model context
+            if healthKitViewModel == nil {
+                healthKitViewModel = HealthKitViewModel(
+                    modelContext: modelContext,
+                    healthKitManager: healthKitManager
+                )
+            }
+        }
         .alert("Archive this shoe?", isPresented: $showArchiveAlert, presenting: shoeToArchive) { shoe in
             Button("Archive", role: .destructive) {
-                shoe.archived = true
+                shoe.archive()
+                try? modelContext.save()
                 print("Archived: \(shoe.model)")
             }
             Button("Cancel", role: .cancel) { }
@@ -64,15 +89,13 @@ struct MainView: View {
         
         .sheet(isPresented: $showingAddSheet) {
             AddAPairView()
-                .presentationDetents([.height(400)])
-                .presentationDragIndicator(.hidden)
+                .presentationDetents([.large])
         }
         
         .sheet(isPresented: $showEditSheet) {
             if let shoeToEdit = shoeToEdit {
                 EditPairView(shoeToEdit: shoeToEdit) // Passage direct de la valeur
-                    .presentationDetents([.height(400)])
-                    .presentationDragIndicator(.hidden)
+                    .presentationDetents([.large])
             }
         }
     }
@@ -85,5 +108,6 @@ struct MainView: View {
 
 #Preview {
     MainView()
+        .modelContainer(PreviewContainer.previewModelContainer)
 }
 

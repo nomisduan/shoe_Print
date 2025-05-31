@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct ShoeGridView: View {
-    @Query private var shoes : [Shoe]
+    @Query private var shoes: [Shoe]
     @Binding var shoeToDelete: Shoe?
     @Binding var showDeleteAlert: Bool
     
@@ -19,12 +19,33 @@ struct ShoeGridView: View {
     @Binding var shoeToEdit: Shoe?
     @Binding var showEditSheet: Bool
    
-    
     let columns = [
         GridItem(.flexible(), spacing: 20),
         GridItem(.flexible(), spacing: 20)
-       ]
-
+    ]
+    
+    // Computed properties for statistics
+    private var activeShoes: [Shoe] {
+        shoes.filter { !$0.archived }
+    }
+    
+    private var totalKilometersThisYear: Double {
+        let calendar = Calendar.current
+        let currentYear = calendar.component(.year, from: Date())
+        
+        return activeShoes.reduce(0) { total, shoe in
+            let yearlyDistance = shoe.entries
+                .filter { calendar.component(.year, from: $0.startDate) == currentYear }
+                .reduce(0) { $0 + $1.distance }
+            return total + yearlyDistance
+        }
+    }
+    
+    private var totalRepairs: Int {
+        return activeShoes.reduce(0) { total, shoe in
+            total + shoe.entries.filter { $0.repair }.count
+        }
+    }
     
     var body: some View {
         ScrollView {
@@ -34,7 +55,7 @@ struct ShoeGridView: View {
                         HStack{
                             Image(systemName: "shoe.2.fill")
                                 .foregroundStyle(.yellow)
-                            Text("0")
+                            Text("\(activeShoes.count)")
                                 .fontWeight(.semibold)
                         }
                         Text("Footwears")
@@ -47,7 +68,7 @@ struct ShoeGridView: View {
                         HStack{
                             Image(systemName: "shoeprints.fill")
                                 .foregroundStyle(.green)
-                            Text("0")
+                            Text(String(format: "%.1f", totalKilometersThisYear))
                                 .fontWeight(.semibold)
                         }
                         Text("Kilometers this year")
@@ -58,9 +79,9 @@ struct ShoeGridView: View {
                     Divider()
                     VStack(alignment: .leading){
                         HStack{
-                            Image(systemName: "wand.and.sparkles")
+                            Image(systemName: "wrench.and.screwdriver.fill")
                                 .foregroundStyle(.purple)
-                            Text("0")
+                            Text("\(totalRepairs)")
                                 .fontWeight(.semibold)
                         }
                         Text("Repairs")
@@ -71,32 +92,35 @@ struct ShoeGridView: View {
                 }
                 .frame(height: 50)
               
-            
-        
-      
             LazyVGrid(columns: columns, spacing: 15) {
-                ForEach(shoes.filter({ shoe in
-                    shoe.archived == false
-                })) { shoe in
-                        ShoeCardView(shoe: shoe) {
-                            shoeToDelete = shoe
-                            showDeleteAlert = true
-                        } onArchive: {
-                            shoeToArchive = shoe
-                            showArchiveAlert = true
-                        } onEdit: {
-                            shoeToEdit = shoe
-                            showEditSheet = true
-                        }
+                ForEach(activeShoes) { shoe in
+                    ShoeCardView(shoe: shoe) {
+                        shoeToDelete = shoe
+                        showDeleteAlert = true
+                    } onArchive: {
+                        shoeToArchive = shoe
+                        showArchiveAlert = true
+                    } onEdit: {
+                        shoeToEdit = shoe
+                        showEditSheet = true
+                    }
                 }
             }
             }
             .padding(.horizontal)
         }
-        //.padding(.horizontal)
-        
+        .onAppear {
+            // Debug: Vérifier le chargement des données persistées
+            print("🔍 ShoeGridView onAppear - Loaded \(shoes.count) shoes total")
+            let activeCount = shoes.filter { !$0.archived }.count
+            let archivedCount = shoes.filter { $0.archived }.count
+            print("📊 Active shoes: \(activeCount), Archived shoes: \(archivedCount)")
+            
+            for shoe in shoes.prefix(3) { // Afficher les 3 premières pour debug
+                print("👟 \(shoe.brand) \(shoe.model) - Active: \(shoe.isActive), Archived: \(shoe.archived)")
+            }
+        }
     }
-    
 }
 
 

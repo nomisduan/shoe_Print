@@ -17,9 +17,13 @@ final class Shoe {
     var icon: String
     var color: String
     var archived: Bool
-    var entries : [StepEntry]
+    var isActive: Bool // Currently worn shoe
+    var purchaseDate: Date?
+    var purchasePrice: Double?
+    var estimatedLifespan: Double // in kilometers
+    var entries: [StepEntry]
     
-    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, entries: [StepEntry]) {
+    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isActive: Bool = false, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
         self.timestamp = timestamp
         self.brand = brand
         self.model = model
@@ -27,6 +31,93 @@ final class Shoe {
         self.icon = icon
         self.color = color
         self.archived = archived
+        self.isActive = isActive
+        self.purchaseDate = purchaseDate
+        self.purchasePrice = purchasePrice
+        self.estimatedLifespan = estimatedLifespan
         self.entries = entries
+    }
+    
+    // MARK: - Computed Properties
+    
+    var totalDistance: Double {
+        entries.reduce(0) { $0 + $1.distance }
+    }
+    
+    var totalSteps: Int {
+        entries.reduce(0) { $0 + $1.steps }
+    }
+    
+    var totalRepairs: Int {
+        entries.filter { $0.repair }.count
+    }
+    
+    var lastUsed: Date? {
+        entries.map { $0.endDate }.max()
+    }
+    
+    var usageDays: Int {
+        let calendar = Calendar.current
+        let uniqueDays = Set(entries.map { calendar.startOfDay(for: $0.startDate) })
+        return uniqueDays.count
+    }
+    
+    var lifespanProgress: Double {
+        guard estimatedLifespan > 0 else { return 0.0 }
+        return min(totalDistance / estimatedLifespan, 1.0)
+    }
+    
+    // MARK: - Business Logic Methods
+    
+    func archive() {
+        archived = true
+        isActive = false // Archived shoe cannot be active
+    }
+    
+    func unarchive() {
+        archived = false
+    }
+    
+    /// Safely sets this shoe as active, ensuring only one shoe is active at a time
+    /// - Parameters:
+    ///   - active: Whether to make this shoe active
+    ///   - modelContext: SwiftData context to fetch and update other shoes
+    func setActive(_ active: Bool, in modelContext: ModelContext) {
+        guard !archived else { 
+            print("⚠️ Cannot activate archived shoe: \(brand) \(model)")
+            return 
+        }
+        
+        if active {
+            // Deactivate all other shoes first
+            deactivateAllOtherShoes(in: modelContext)
+            isActive = true
+            print("✅ Activated shoe: \(brand) \(model)")
+        } else {
+            isActive = false
+            print("➖ Deactivated shoe: \(brand) \(model)")
+        }
+    }
+    
+    /// Deactivates all other shoes in the database
+    private func deactivateAllOtherShoes(in modelContext: ModelContext) {
+        let descriptor = FetchDescriptor<Shoe>(
+            predicate: #Predicate<Shoe> { shoe in
+                shoe.isActive == true
+            }
+        )
+        
+        do {
+            let activeShoes = try modelContext.fetch(descriptor)
+            for shoe in activeShoes {
+                if shoe.persistentModelID != self.persistentModelID {
+                    shoe.isActive = false
+                    print("➖ Deactivated shoe: \(shoe.brand) \(shoe.model)")
+                }
+            }
+            try modelContext.save()
+        } catch {
+            print("❌ Error deactivating other shoes: \(error)")
+        }
     }
 }

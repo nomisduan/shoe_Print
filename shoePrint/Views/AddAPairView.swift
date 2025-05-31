@@ -17,39 +17,16 @@ struct AddAPairView: View {
     @State private var shoeNotes = ""
     @State private var shoeIcon = "🩴"
     @State private var shoeColor = "CustomPink"
+    @State private var purchaseDate = Date()
+    @State private var purchasePrice = ""
+    @State private var includePurchaseInfo = false
+    @State private var estimatedLifespan = "800"
     
     let icons = ["🥾","👞","🩴","👟","🥿","👢","👡","🛼","⛸️","🩰","👠","🦶"]
     let colors = ["CustomPink", "CustomYellow", "CustomBlue", "CustomGreen", "CustomPurple", "CustomGray"]
     
     var body: some View {
-        
-        VStack(spacing: 0){
-            HStack {
-                            Button("Cancel") { dismiss() }
-                            Spacer()
-                            Text("New pair")
-                                .font(.headline)
-                            Spacer()
-                            Button("Add") {
-                                // Création de la nouvelle paire de chaussures
-                                let newShoe = Shoe(brand: shoeBrand, model: shoeModel, icon: shoeIcon, color: shoeColor, entries: [])
-
-                                // Insertion du modèle dans le contexte de données
-                                context.insert(newShoe)
-                                
-                                // Enregistrement du contexte pour persister les changements
-                                do {
-                                    try context.save() // Sauvegarder les changements
-                                    dismiss() // Fermer la vue une fois l'enregistrement réussi
-                                } catch {
-                                    // En cas d'erreur lors de la sauvegarde
-                                    print("Error saving new shoe: \(error.localizedDescription)")
-                                }
-                            }
-                            .disabled(shoeBrand.isEmpty || shoeModel.isEmpty || shoeIcon.isEmpty)
-                        }
-            .padding()
-                        .background(Color("FormGray"))
+        NavigationView {
             Form(){
                 Section("Informations") {
                     TextField("BRAND", text: $shoeBrand)
@@ -57,11 +34,41 @@ struct AddAPairView: View {
                         .autocapitalization(.allCharacters)
                         .italic()
                     TextField("Model", text: $shoeModel)
+                    TextField("Notes (optional)", text: $shoeNotes, axis: .vertical)
+                        .lineLimit(2...4)
                 }
                 
+                Section("Purchase Information") {
+                    Toggle("Include purchase details", isOn: $includePurchaseInfo)
+                    
+                    if includePurchaseInfo {
+                        DatePicker("Purchase Date", selection: $purchaseDate, displayedComponents: .date)
+                        
+                        HStack {
+                            TextField("Price", text: $purchasePrice)
+                                .keyboardType(.decimalPad)
+                            Text("€")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
                 
-                //  TextField("Notes", text: $shoeNotes)
-                //    .frame(height: 80, alignment: .top)
+                Section("Lifespan") {
+                    HStack {
+                        Text("Estimated lifespan")
+                        Spacer()
+                        TextField("800", text: $estimatedLifespan)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("km")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Text("Set the expected lifespan of your shoes in kilometers. This helps track wear progress.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 
                 Section("Customization") {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -74,7 +81,15 @@ struct AddAPairView: View {
                                 .animation(.spring(), value: shoeIcon)
                                 .onTapGesture {
                                     shoeIcon = icon
-                                        
+                                    // Auto-set lifespan based on shoe type
+                                    switch icon {
+                                    case "👟": estimatedLifespan = "800" // Running shoes
+                                    case "🥾": estimatedLifespan = "1200" // Hiking boots
+                                    case "👞": estimatedLifespan = "1000" // Dress shoes
+                                    case "🩴": estimatedLifespan = "300" // Sandals
+                                    case "👢": estimatedLifespan = "1000" // Boots
+                                    default: estimatedLifespan = "600" // Default
+                                    }
                                 }
                             
                         }
@@ -100,6 +115,43 @@ struct AddAPairView: View {
                                 Spacer()
                         }
                     }
+                }
+            }
+            .navigationTitle("New Pair")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { 
+                        dismiss() 
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") {
+                        // Création de la nouvelle paire de chaussures
+                        let newShoe = Shoe(
+                            brand: shoeBrand, 
+                            model: shoeModel, 
+                            notes: shoeNotes, 
+                            icon: shoeIcon, 
+                            color: shoeColor,
+                            purchaseDate: includePurchaseInfo ? purchaseDate : nil,
+                            purchasePrice: includePurchaseInfo && !purchasePrice.isEmpty ? Double(purchasePrice) : nil,
+                            estimatedLifespan: Double(estimatedLifespan) ?? 800.0
+                        )
+
+                        // Insertion du modèle dans le contexte de données
+                        context.insert(newShoe)
+                        
+                        // Enregistrement du contexte pour persister les changements
+                        do {
+                            try context.save() // Sauvegarder les changements
+                            dismiss() // Fermer la vue une fois l'enregistrement réussi
+                        } catch {
+                            // En cas d'erreur lors de la sauvegarde
+                            print("Error saving new shoe: \(error.localizedDescription)")
+                        }
+                    }
+                    .disabled(shoeBrand.isEmpty || shoeModel.isEmpty || shoeIcon.isEmpty)
                 }
             }
         }

@@ -10,6 +10,7 @@ import SwiftData
 
 struct ShoeListView: View {
     @Query private var shoes : [Shoe]
+    @Environment(\.modelContext) private var context
     
     var body: some View {
         ScrollView {
@@ -20,7 +21,17 @@ struct ShoeListView: View {
                     ForEach(shoes.filter({ shoe in
                         shoe.archived == true
                     })) { shoe in
-                        ShoeRowView(shoe: shoe)
+                        ShoeRowView(
+                            shoe: shoe,
+                            onUnarchive: {
+                                shoe.unarchive()
+                                try? context.save()
+                            },
+                            onDelete: {
+                                context.delete(shoe)
+                                try? context.save()
+                            }
+                        )
                     }
                     
                 }
@@ -32,20 +43,6 @@ struct ShoeListView: View {
 }
 
 #Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-
-    let container = try! ModelContainer(for: Shoe.self, configurations: config)
-
-    let context = container.mainContext
-    let _ = [
-        Shoe(brand: "Nike", model: "Air Zoom", icon: "👟", color: "CustomPink", entries: []),
-        Shoe(brand: "Palomon", model: "X Ultra", icon: "🥾", color: "CustomBlue", entries: []),
-        Shoe(brand: "Birkenstock", model: "Classic", icon: "🥿", color: "CustomGreen", entries: []),
-        Shoe(brand: "Nike", model: "Air Zoom", icon: "👟", color: "CustomPink", entries: []),
-        Shoe(brand: "Salomon", model: "X Ultra", icon: "🥾", color: "CustomBlue", entries: []),
-        Shoe(brand: "Birkenstock", model: "Classic", icon: "🥿", color: "CustomGreen", entries: [])
-    ].forEach { context.insert($0) }
-
     return ShoeListView()
-        .modelContainer(container)
+        .modelContainer(PreviewContainer.previewModelContainer)
 }
