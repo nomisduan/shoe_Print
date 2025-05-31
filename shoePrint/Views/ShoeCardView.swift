@@ -68,6 +68,11 @@ struct ShoeCardView: View {
                     }
                     
                     Spacer()
+                    
+                    // Default shoe indicator aligned trailing
+                    if shoe.isDefault {
+                        DefaultShoeIndicator()
+                    }
                 }
                 
                 Spacer()
@@ -153,6 +158,24 @@ struct WearingIndicator: View {
         .onAppear {
             isPulsing = true
         }
+    }
+}
+
+/// Default shoe indicator
+struct DefaultShoeIndicator: View {
+    var body: some View {
+        HStack {
+            Image(systemName: "star.fill")
+                .foregroundColor(.orange)
+                .font(.caption)
+            Text("Default")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.orange.opacity(0.2))
+        .cornerRadius(8)
     }
 }
 

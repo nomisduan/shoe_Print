@@ -18,12 +18,14 @@ final class Shoe {
     var color: String
     var archived: Bool
     var isActive: Bool // Currently worn shoe
+    var isDefault: Bool // Default shoe for automatic daily activation
+    var activatedAt: Date? // Timestamp when the shoe was activated
     var purchaseDate: Date?
     var purchasePrice: Double?
     var estimatedLifespan: Double // in kilometers
     var entries: [StepEntry]
     
-    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isActive: Bool = false, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
+    init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isActive: Bool = false, isDefault: Bool = false, activatedAt: Date? = nil, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
         self.timestamp = timestamp
         self.brand = brand
         self.model = model
@@ -32,6 +34,8 @@ final class Shoe {
         self.color = color
         self.archived = archived
         self.isActive = isActive
+        self.isDefault = isDefault
+        self.activatedAt = activatedAt
         self.purchaseDate = purchaseDate
         self.purchasePrice = purchasePrice
         self.estimatedLifespan = estimatedLifespan
@@ -92,9 +96,11 @@ final class Shoe {
             // Deactivate all other shoes first
             deactivateAllOtherShoes(in: modelContext)
             isActive = true
-            print("✅ Activated shoe: \(brand) \(model)")
+            activatedAt = Date() // Set activation timestamp for future data attribution
+            print("✅ Activated shoe: \(brand) \(model) at \(activatedAt!)")
         } else {
             isActive = false
+            activatedAt = nil // Clear activation timestamp
             print("➖ Deactivated shoe: \(brand) \(model)")
         }
     }
@@ -112,12 +118,56 @@ final class Shoe {
             for shoe in activeShoes {
                 if shoe.persistentModelID != self.persistentModelID {
                     shoe.isActive = false
+                    shoe.activatedAt = nil // Clear activation timestamp
                     print("➖ Deactivated shoe: \(shoe.brand) \(shoe.model)")
                 }
             }
             try modelContext.save()
         } catch {
             print("❌ Error deactivating other shoes: \(error)")
+        }
+    }
+    
+    /// Safely sets this shoe as default, ensuring only one shoe is default at a time
+    /// - Parameters:
+    ///   - default: Whether to make this shoe the default
+    ///   - modelContext: SwiftData context to fetch and update other shoes
+    func setDefault(_ default: Bool, in modelContext: ModelContext) {
+        guard !archived else { 
+            print("⚠️ Cannot set archived shoe as default: \(brand) \(model)")
+            return 
+        }
+        
+        if `default` {
+            // Remove default status from all other shoes first
+            removeDefaultFromAllOtherShoes(in: modelContext)
+            isDefault = true
+            print("✅ Set as default shoe: \(brand) \(model)")
+        } else {
+            isDefault = false
+            print("➖ Removed default status: \(brand) \(model)")
+        }
+    }
+    
+    /// Removes default status from all other shoes in the database
+    private func removeDefaultFromAllOtherShoes(in modelContext: ModelContext) {
+        let descriptor = FetchDescriptor<Shoe>(
+            predicate: #Predicate<Shoe> { shoe in
+                shoe.isDefault == true
+            }
+        )
+        
+        do {
+            let defaultShoes = try modelContext.fetch(descriptor)
+            for shoe in defaultShoes {
+                if shoe.persistentModelID != self.persistentModelID {
+                    shoe.isDefault = false
+                    print("➖ Removed default status: \(shoe.brand) \(shoe.model)")
+                }
+            }
+            try modelContext.save()
+        } catch {
+            print("❌ Error removing default status from other shoes: \(error)")
         }
     }
 }

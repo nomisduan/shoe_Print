@@ -29,6 +29,38 @@ final class HourlyAttributionService: ObservableObject {
     
     // MARK: - Attribution Methods
     
+    /// Processes hourly data and applies automatic attribution where possible
+    /// - Parameter hourlyData: Array of unattributed hourly step data to process
+    /// - Returns: Array of processed hourly data with automatic attributions applied
+    func processHourlyDataWithAutoAttribution(_ hourlyData: [HourlyStepData]) async -> [HourlyStepData] {
+        var processedData = hourlyData
+        
+        // Get active shoes for automatic attribution
+        let activeShoes = await getActiveShoes()
+        
+        // Only auto-attribute if there's exactly one active shoe
+        guard activeShoes.count == 1, let activeShoe = activeShoes.first else {
+            print("📊 HourlyAttributionService: \(activeShoes.count) active shoes found - no automatic attribution")
+            return processedData
+        }
+        
+        print("🤖 Auto-attributing \(hourlyData.count) hours to: \(activeShoe.brand) \(activeShoe.model)")
+        
+        // Apply automatic attribution to all provided data
+        for i in 0..<processedData.count {
+            if processedData[i].assignedShoe == nil {
+                // Create and save StepEntry for this hour
+                await attributeHourToShoe(processedData[i], to: activeShoe)
+                
+                // Update the local data structure
+                processedData[i].assignedShoe = activeShoe
+                print("✅ Auto-attributed \(processedData[i].timeString): \(processedData[i].steps) steps")
+            }
+        }
+        
+        return processedData
+    }
+    
     /// Attributes steps from a specific hour to a shoe
     /// - Parameters:
     ///   - hourData: The hourly step data to attribute
@@ -122,6 +154,23 @@ final class HourlyAttributionService: ObservableObject {
     
     // MARK: - Private Methods
     
+    /// Fetches currently active shoes
+    private func getActiveShoes() async -> [Shoe] {
+        let descriptor = FetchDescriptor<Shoe>(
+            predicate: #Predicate<Shoe> { shoe in
+                shoe.isActive && !shoe.archived
+            }
+        )
+        
+        do {
+            let activeShoes = try modelContext.fetch(descriptor)
+            return activeShoes
+        } catch {
+            print("❌ Error fetching active shoes: \(error)")
+            return []
+        }
+    }
+    
     /// Loads existing hourly attributions from the database
     private func loadExistingAttributions() {
         let descriptor = FetchDescriptor<StepEntry>(
@@ -179,10 +228,10 @@ final class HourlyAttributionService: ObservableObject {
         return formatter.string(from: date)
     }
     
-    /// Estimates distance from step count (rough approximation)
+    /// Estimates distance from step count
     private func estimateDistance(from steps: Int) -> Double {
-        // Average stride length: ~0.7 meters
-        let strideLength = 0.0007 // in kilometers
-        return Double(steps) * strideLength
+        // Average step length is approximately 0.762 meters
+        let distanceInMeters = Double(steps) * 0.762
+        return distanceInMeters / 1000.0 // Convert to kilometers
     }
 } 

@@ -28,15 +28,19 @@ final class HealthKitViewModel: ObservableObject {
     private let healthKitDataService: HealthKitDataService
     private let dataAttributionService: DataAttributionService
     private let hourlyAttributionService: HourlyAttributionService
+    private let intelligentActivationService: IntelligentActivationService
+    private let modelContext: ModelContext
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
     
     init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
+        self.modelContext = modelContext
         self.healthKitManager = healthKitManager
         self.healthKitDataService = HealthKitDataService(healthKitManager: healthKitManager)
         self.dataAttributionService = DataAttributionService(modelContext: modelContext)
         self.hourlyAttributionService = HourlyAttributionService(modelContext: modelContext)
+        self.intelligentActivationService = IntelligentActivationService(modelContext: modelContext)
         
         setupBindings()
         checkInitialPermissionStatus()
@@ -62,14 +66,30 @@ final class HealthKitViewModel: ObservableObject {
     /// Fetches hourly steps for a specific date
     func fetchHourlySteps(for date: Date) async -> [HourlyStepData] {
         if isPermissionGranted {
-            let hourlyData = await fetchRealHourlyData(for: date)
+            // Step 0: Run intelligent activation checks
+            await intelligentActivationService.checkAndDeactivateInactiveShoes()
+            await intelligentActivationService.checkAndActivateDefaultShoe()
             
-            // Apply existing attributions to the hourly data
-            return hourlyData.map { hourData in
-                var updatedHourData = hourData
-                updatedHourData.assignedShoe = hourlyAttributionService.getAttributedShoe(for: hourData)
-                return updatedHourData
-            }
+            // Step 1: Get raw HealthKit data (source of truth for steps)
+            let rawHealthKitData = await fetchRawHealthKitData(for: date)
+            
+            // Step 2: Get existing attributions from database (source of truth for attributions)
+            let existingAttributions = await fetchExistingHourlyAttributions(for: date)
+            
+            // Step 3: Merge the two sources
+            let mergedData = mergeHealthKitDataWithAttributions(rawHealthKitData, existingAttributions)
+            
+            // Step 4: Split data into attributed and unattributed
+            let unattributedData = mergedData.filter { $0.assignedShoe == nil }
+            let attributedData = mergedData.filter { $0.assignedShoe != nil }
+            
+            // Step 5: Only apply auto-attribution to recent unattributed data
+            let processedUnattributedData = await applyAutoAttributionToRecentData(unattributedData)
+            
+            // Step 6: Combine attributed and processed unattributed data
+            let finalData = attributedData + processedUnattributedData
+            
+            return finalData.sorted { $0.hour < $1.hour }
         } else {
             print("🔬 Generating sample hourly data for testing (HealthKit not authorized)")
             return generateSampleHourlyData(for: date)
@@ -119,7 +139,8 @@ final class HealthKitViewModel: ObservableObject {
 
 private extension HealthKitViewModel {
     
-    func fetchRealHourlyData(for date: Date) async -> [HourlyStepData] {
+    /// Fetches raw HealthKit data without any attribution information
+    func fetchRawHealthKitData(for date: Date) async -> [HourlyStepData] {
         let hourlyData = await healthKitManager.fetchHourlyData(for: date)
         
         return hourlyData.compactMap { data in
@@ -129,8 +150,64 @@ private extension HealthKitViewModel {
                 hour: data.hour,
                 date: Calendar.current.date(bySettingHour: data.hour, minute: 0, second: 0, of: date) ?? date,
                 steps: data.steps,
-                assignedShoe: nil
+                assignedShoe: nil // Always nil - attributions come from database
             )
+        }
+    }
+    
+    /// Fetches existing hourly attributions from the database for a specific date
+    func fetchExistingHourlyAttributions(for date: Date) async -> [String: Shoe] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? date
+        
+        let descriptor = FetchDescriptor<StepEntry>(
+            predicate: #Predicate<StepEntry> { entry in
+                entry.source == "hourly" && 
+                entry.startDate >= startOfDay && 
+                entry.startDate < endOfDay
+            }
+        )
+        
+        do {
+            let entries = try modelContext.fetch(descriptor)
+            
+            var attributions: [String: Shoe] = [:]
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd-HH"
+            
+            for entry in entries {
+                if let shoe = entry.shoe {
+                    let hourKey = formatter.string(from: entry.startDate)
+                    attributions[hourKey] = shoe
+                }
+            }
+            
+            print("📚 Found \(attributions.count) existing hourly attributions for \(formatter.string(from: date))")
+            return attributions
+            
+        } catch {
+            print("❌ Error fetching existing attributions: \(error)")
+            return [:]
+        }
+    }
+    
+    /// Merges raw HealthKit data with existing attributions from database
+    func mergeHealthKitDataWithAttributions(_ healthKitData: [HourlyStepData], _ attributions: [String: Shoe]) -> [HourlyStepData] {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HH"
+        
+        return healthKitData.map { hourData in
+            var mergedData = hourData
+            let hourKey = formatter.string(from: hourData.date)
+            
+            // Apply existing attribution if found
+            if let attributedShoe = attributions[hourKey] {
+                mergedData.assignedShoe = attributedShoe
+                print("🔗 Restored attribution for \(hourData.timeString): \(attributedShoe.brand) \(attributedShoe.model)")
+            }
+            
+            return mergedData
         }
     }
     
@@ -150,6 +227,60 @@ private extension HealthKitViewModel {
         }
         
         isLoading = false
+    }
+    
+    /// Applies auto-attribution only to recent unattributed data (after activation timestamp)
+    private func applyAutoAttributionToRecentData(_ unattributedData: [HourlyStepData]) async -> [HourlyStepData] {
+        // Only process if we have unattributed data
+        guard !unattributedData.isEmpty else { return [] }
+        
+        // Get active shoes for automatic attribution
+        let activeShoes = await getActiveShoes()
+        
+        // Only auto-attribute if there's exactly one active shoe
+        guard activeShoes.count == 1, let activeShoe = activeShoes.first else {
+            print("📊 No auto-attribution: \(activeShoes.count) active shoes")
+            return unattributedData
+        }
+        
+        // Get activation timestamp
+        guard let activatedAt = activeShoe.activatedAt else {
+            print("📊 No auto-attribution: No activation timestamp")
+            return unattributedData
+        }
+        
+        // Filter only data after activation
+        let recentData = unattributedData.filter { hourData in
+            hourData.date >= activatedAt
+        }
+        
+        let preActivationData = unattributedData.filter { hourData in
+            hourData.date < activatedAt
+        }
+        
+        print("📊 Auto-attribution: \(recentData.count) recent hours, \(preActivationData.count) pre-activation hours (skipped)")
+        
+        // Apply auto-attribution to recent data only
+        let processedRecentData = await hourlyAttributionService.processHourlyDataWithAutoAttribution(recentData)
+        
+        // Return combined data (pre-activation unchanged + processed recent)
+        return preActivationData + processedRecentData
+    }
+    
+    /// Gets all currently active shoes
+    private func getActiveShoes() async -> [Shoe] {
+        let descriptor = FetchDescriptor<Shoe>(
+            predicate: #Predicate<Shoe> { shoe in
+                shoe.isActive == true && shoe.archived == false
+            }
+        )
+        
+        do {
+            return try modelContext.fetch(descriptor)
+        } catch {
+            print("❌ Error fetching active shoes: \(error)")
+            return []
+        }
     }
 }
 

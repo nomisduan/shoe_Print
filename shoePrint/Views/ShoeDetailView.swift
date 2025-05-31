@@ -201,6 +201,20 @@ struct ShoeDetailView: View {
                     }
                     
                     Button(action: {
+                        shoe.setDefault(!shoe.isDefault, in: context)
+                    }) {
+                        HStack {
+                            Image(systemName: shoe.isDefault ? "star.fill" : "star")
+                            Text(shoe.isDefault ? "Remove as Default" : "Set as Default")
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(shoe.isDefault ? Color.orange : Color.blue)
+                        .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
                         // Ajouter une réparation
                         let repairEntry = StepEntry(
                             startDate: Date(),
