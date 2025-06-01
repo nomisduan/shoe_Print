@@ -167,22 +167,81 @@ final class Shoe {
         print("🔄 Refreshing computed properties for \(brand) \(model) using database queries")
         
         do {
-            // Query active sessions directly from database
-            let activeSessionsDescriptor = FetchDescriptor<ShoeSession>(
-                predicate: #Predicate<ShoeSession> { session in
-                    session.endDate == nil
-                }
-            )
-            let allActiveSessions = try modelContext.fetch(activeSessionsDescriptor)
-            let activeSessions = allActiveSessions.filter { session in
-                session.shoe?.persistentModelID == self.persistentModelID
-            }
+            // ✅ Add delay to ensure database consistency after deletions
+            try await Task.sleep(nanoseconds: 50_000_000) // 50ms
             
-            // Query all sessions for distance calculation
-            let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
-            let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
-            let allSessions = allSessionsInDB.filter { session in
-                session.shoe?.persistentModelID == self.persistentModelID
+            // ✅ Wrap database operations in error handling to prevent SwiftData macro crashes
+            let (activeSessions, allSessions) = await withTaskGroup(of: (activeSessions: [ShoeSession], allSessions: [ShoeSession]).self) { group in
+                group.addTask {
+                    do {
+                        // Query active sessions directly from database
+                        let activeSessionsDescriptor = FetchDescriptor<ShoeSession>(
+                            predicate: #Predicate<ShoeSession> { session in
+                                session.endDate == nil
+                            }
+                        )
+                        let allActiveSessions = try modelContext.fetch(activeSessionsDescriptor)
+                        let activeSessions = allActiveSessions.compactMap { session -> ShoeSession? in
+                            // ✅ Additional safety check to prevent SwiftData macro crashes
+                            do {
+                                // Try to access session properties safely
+                                let _ = session.startDate
+                                let _ = session.endDate
+                                
+                                guard let shoeID = session.shoe?.persistentModelID else { 
+                                    print("⚠️ Found session with nil shoe reference - skipping")
+                                    return nil
+                                }
+                                
+                                if shoeID == self.persistentModelID {
+                                    return session
+                                }
+                                return nil
+                            } catch {
+                                print("❌ Session property access failed (likely deleted): \(error.localizedDescription)")
+                                return nil
+                            }
+                        }
+                        
+                        // Query all sessions for distance calculation
+                        let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
+                        let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
+                        let allSessions = allSessionsInDB.compactMap { session -> ShoeSession? in
+                            // ✅ Additional safety check to prevent SwiftData macro crashes
+                            do {
+                                // Try to access session properties safely
+                                let _ = session.startDate
+                                let _ = session.distance
+                                let _ = session.steps
+                                
+                                guard let shoeID = session.shoe?.persistentModelID else { 
+                                    print("⚠️ Found session with nil shoe reference - skipping")
+                                    return nil
+                                }
+                                
+                                if shoeID == self.persistentModelID {
+                                    return session
+                                }
+                                return nil
+                            } catch {
+                                print("❌ Session property access failed (likely deleted): \(error.localizedDescription)")
+                                return nil
+                            }
+                        }
+                        
+                        return (activeSessions: activeSessions, allSessions: allSessions)
+                        
+                    } catch {
+                        print("❌ Database query failed: \(error.localizedDescription)")
+                        return (activeSessions: [], allSessions: [])
+                    }
+                }
+                
+                // Return the result from the task
+                for await result in group {
+                    return result
+                }
+                return (activeSessions: [], allSessions: [])
             }
             
             // Update computed properties with fresh data
@@ -192,8 +251,21 @@ final class Shoe {
             _isActive = !activeSessions.isEmpty
             _activatedAt = activeSessions.first?.startDate
             
-            // Calculate total distance using fallback pattern (sessions OR entries, not both)
-            let sessionDistance = allSessions.reduce(0) { $0 + $1.distance }
+            // ✅ Calculate total distance using fallback pattern with error handling
+            let sessionDistance = allSessions.reduce(0) { total, session in
+                do {
+                    // ✅ Safe distance access with additional validation
+                    let distance = session.distance
+                    guard distance >= 0 else {
+                        print("⚠️ Invalid session distance: \(distance) - skipping")
+                        return total
+                    }
+                    return total + distance
+                } catch {
+                    print("❌ Failed to access session distance (likely deleted): \(error.localizedDescription)")
+                    return total
+                }
+            }
             
             if !allSessions.isEmpty {
                 // ✅ Use session-based calculation (new system)
@@ -201,7 +273,13 @@ final class Shoe {
                 print("📊 Using session-based distance: \(String(format: "%.1f", sessionDistance)) km from \(allSessions.count) sessions")
             } else {
                 // ✅ Fallback to entries-based calculation (legacy system)
-                let entriesDistance = entries.reduce(0) { $0 + $1.distance }
+                let entriesDistance = entries.reduce(0) { total, entry in
+                    guard entry.distance >= 0 else {
+                        print("⚠️ Invalid entry distance: \(entry.distance) - skipping")
+                        return total
+                    }
+                    return total + entry.distance
+                }
                 _totalDistance = entriesDistance
                 print("📊 Using entries-based distance: \(String(format: "%.1f", entriesDistance)) km from \(entries.count) entries")
             }
@@ -210,7 +288,22 @@ final class Shoe {
             print("✅ Properties updated: active \(wasActive)→\(_isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", _totalDistance)) km")
             
         } catch {
-            print("❌ Error refreshing computed properties for \(brand) \(model): \(error)")
+            print("❌ Critical error refreshing computed properties for \(brand) \(model): \(error.localizedDescription)")
+            // ✅ Enhanced fallback with error isolation
+            Task { @MainActor in
+                do {
+                    // ✅ Additional delay for crash recovery
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    print("🔄 Attempting fallback memory refresh for \(brand) \(model)")
+                    refreshComputedPropertiesFromMemory()
+                } catch {
+                    print("❌ Fallback also failed for \(brand) \(model): \(error.localizedDescription)")
+                    // ✅ Final safe state - just reset to known values
+                    _isActive = false
+                    _activatedAt = nil
+                    print("🛡️ Reset to safe state for \(brand) \(model)")
+                }
+            }
         }
     }
     

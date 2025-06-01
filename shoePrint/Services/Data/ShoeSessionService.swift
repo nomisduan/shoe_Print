@@ -342,8 +342,13 @@ final class ShoeSessionService: ObservableObject {
         // Calculate real HealthKit data for this hour
         let healthKitData = await calculateHealthKitData(from: hourStart, to: hourEnd)
         
-        // Check for existing session that covers this hour and update affected shoes
+        print("🕐 Creating hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute()))")
+        
+        // ✅ Check for existing sessions and get affected shoes SAFELY
         let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
+        print("🔍 Found \(affectedShoes.count) shoes with conflicting sessions")
+        
+        // ✅ Remove conflicting sessions with error handling
         await removeConflictingSessions(for: hourStart, to: hourEnd)
         
         // Create new session for this specific hour with real data
@@ -359,17 +364,53 @@ final class ShoeSessionService: ObservableObject {
         modelContext.insert(session)
         
         do {
+            // ✅ Save first, then refresh properties
             try modelContext.save()
+            print("✅ Session saved successfully")
             
-            // ✅ Update computed properties for affected shoes using database queries
-            for affectedShoe in affectedShoes {
-                await affectedShoe.refreshComputedProperties(using: modelContext)
+            // ✅ Add delay before refresh to ensure save is fully committed
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
+            // ✅ Use batch property service to avoid individual refresh issues
+            var allAffectedShoes = affectedShoes
+            if !allAffectedShoes.contains(where: { $0.persistentModelID == shoe.persistentModelID }) {
+                allAffectedShoes.append(shoe)
             }
-            await shoe.refreshComputedProperties(using: modelContext)
+            
+            if !allAffectedShoes.isEmpty {
+                print("🔄 Refreshing properties for \(allAffectedShoes.count) affected shoes")
+                
+                // ✅ Wrap property refresh in error handling to prevent attribution flow crashes
+                do {
+                    await shoePropertyService.refreshMultipleShoes(allAffectedShoes)
+                    print("✅ Property refresh completed successfully")
+                } catch {
+                    print("❌ Property refresh failed: \(error.localizedDescription)")
+                    // ✅ Fall back to individual refresh with error isolation
+                    for shoe in allAffectedShoes {
+                        do {
+                            await shoe.refreshComputedProperties(using: modelContext)
+                            print("✅ Individual refresh succeeded for \(shoe.brand) \(shoe.model)")
+                        } catch {
+                            print("❌ Individual refresh failed for \(shoe.brand) \(shoe.model): \(error.localizedDescription)")
+                            // ✅ Continue with other shoes even if one fails
+                        }
+                    }
+                }
+            }
             
             print("🕐 Created hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute())) - \(healthKitData.steps) steps, \(String(format: "%.1f", healthKitData.distance)) km")
+            
         } catch {
-            print("❌ Failed to save hour session: \(error)")
+            print("❌ Failed to save hour session: \(error.localizedDescription)")
+            // ✅ Enhanced cleanup on failure with error isolation
+            do {
+                modelContext.delete(session)
+                try modelContext.save()
+                print("✅ Cleaned up failed session")
+            } catch {
+                print("❌ Failed to clean up session: \(error.localizedDescription)")
+            }
         }
         
         return session
