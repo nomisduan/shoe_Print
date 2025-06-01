@@ -24,7 +24,12 @@ final class HealthKitViewModel: ObservableObject {
     
     // MARK: - Private Properties
     
-    private let healthKitManager: HealthKitManager
+    private let _healthKitManager: HealthKitManager
+    
+    // MARK: - Public Properties
+    
+    /// Exposes the HealthKitManager for sharing across services
+    var healthKitManager: HealthKitManager { _healthKitManager }
     private let shoeSessionService: ShoeSessionService
     private let modelContext: ModelContext
     private var cancellables = Set<AnyCancellable>()
@@ -33,7 +38,7 @@ final class HealthKitViewModel: ObservableObject {
     
     init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
         self.modelContext = modelContext
-        self.healthKitManager = healthKitManager
+        self._healthKitManager = healthKitManager
         self.shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: healthKitManager)
         
         checkHealthKitAvailability()
@@ -44,34 +49,48 @@ final class HealthKitViewModel: ObservableObject {
     
     /// Requests HealthKit permissions
     func requestPermissions() async {
+        print("🔐 HealthKitViewModel: Starting permission request...")
         isLoading = true
+        error = nil
+        
         do {
-            try await healthKitManager.requestPermissions()
+            try await _healthKitManager.requestPermissions()
+            
+            // ✅ Wait for authorization status to be properly updated
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             
             // iOS bug workaround: Sometimes authorization status doesn't update immediately
             if !isPermissionGranted {
-                print("⚠️ HealthKit permission bug detected - trying workaround...")
+                print("⚠️ HealthKit permission status not updated - trying workaround...")
                 
-                // Wait a bit and try to fetch data to verify real authorization
+                // Wait a bit longer and try to fetch data to verify real authorization
                 try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                 
-                let testData = await healthKitManager.fetchHourlyData(for: Date())
+                print("📊 Testing data access to verify real authorization...")
+                let testData = await _healthKitManager.fetchHourlyData(for: Date())
+                
                 if !testData.isEmpty {
                     print("✅ HealthKit data accessible despite permission status - overriding")
-                    healthKitManager.overrideAuthorizationStatus(to: true)
+                    _healthKitManager.overrideAuthorizationStatus(to: true)
+                } else {
+                    print("❌ No HealthKit data accessible - permissions likely denied")
                 }
+            } else {
+                print("✅ HealthKit permissions granted successfully")
             }
             
-            self.error = nil
         } catch {
+            print("❌ HealthKit permission request failed: \(error)")
             self.error = "Failed to request HealthKit permissions: \(error.localizedDescription)"
         }
+        
         isLoading = false
+        print("🔐 HealthKitViewModel: Permission request completed. Granted: \(isPermissionGranted)")
     }
     
     /// Force override authorization status (workaround for iOS bugs)
     func overridePermissionStatus() {
-        healthKitManager.overrideAuthorizationStatus(to: true)
+        _healthKitManager.overrideAuthorizationStatus(to: true)
     }
     
     /// Fetches hourly steps for a specific date
@@ -101,7 +120,7 @@ final class HealthKitViewModel: ObservableObject {
     }
     
     private func setupBindings() {
-        healthKitManager.$isAuthorized
+        _healthKitManager.$isAuthorized
             .receive(on: DispatchQueue.main)
             .assign(to: \.isPermissionGranted, on: self)
             .store(in: &cancellables)
@@ -109,7 +128,7 @@ final class HealthKitViewModel: ObservableObject {
     
     /// Fetches raw HealthKit data without any attribution information
     private func fetchRawHealthKitData(for date: Date) async -> [HourlyStepData] {
-        let hourlyData = await healthKitManager.fetchHourlyData(for: date)
+        let hourlyData = await _healthKitManager.fetchHourlyData(for: date)
         
         return hourlyData.compactMap { data in
             guard data.steps > 0 else { return nil }

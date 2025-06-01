@@ -135,8 +135,10 @@ struct ShoeGridView: View {
             
             for shoe in shoes.prefix(3) { // Afficher les 3 premières pour debug
                 print("👟 \(shoe.brand) \(shoe.model) - Active: \(shoe.isActive), Archived: \(shoe.archived)")
-                // Force refresh distance after relationships are loaded
-                shoe.refreshAfterRelationshipsLoaded()
+                // ✅ Use new async refresh method
+                Task {
+                    await shoe.refreshComputedProperties(using: modelContext)
+                }
             }
         }
     }

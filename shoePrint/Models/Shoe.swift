@@ -24,16 +24,9 @@ final class Shoe {
     var entries: [StepEntry]
     
     // MARK: - Session Relationship
+    // ✅ Removed broken didSet pattern - relationships load asynchronously in SwiftData
     @Relationship(deleteRule: .cascade, inverse: \ShoeSession.shoe)
-    var sessions: [ShoeSession] = [] {
-        didSet {
-            // Automatically update computed properties when sessions change
-            _isActive = computeIsActive()
-            _activatedAt = computeActivatedAt()
-            // Update distance when sessions change
-            updateTotalDistance()
-        }
-    }
+    var sessions: [ShoeSession] = []
     
     // MARK: - Stored Properties for Observable State
     
@@ -107,18 +100,28 @@ final class Shoe {
     // MARK: - Session-based Computed Properties (for internal use)
     
     /// Returns the currently active session, if any
+    /// ⚠️ Only reliable if relationships are loaded - prefer database queries
     var activeSession: ShoeSession? {
         sessions.first(where: { $0.isActive })
     }
     
-    /// Computes if the shoe is currently active
-    private func computeIsActive() -> Bool {
-        return activeSession != nil
-    }
-    
-    /// Computes the activation date
-    private func computeActivatedAt() -> Date? {
-        return activeSession?.startDate
+    /// Gets active session using database query (always reliable)
+    func getActiveSession(using modelContext: ModelContext) async -> ShoeSession? {
+        do {
+            // Fetch all active sessions and filter manually (SwiftData predicate limitation)
+            let descriptor = FetchDescriptor<ShoeSession>(
+                predicate: #Predicate<ShoeSession> { session in
+                    session.endDate == nil
+                }
+            )
+            let activeSessions = try modelContext.fetch(descriptor)
+            return activeSessions.first { session in
+                session.shoe?.persistentModelID == self.persistentModelID
+            }
+        } catch {
+            print("❌ Error fetching active session for \(brand) \(model): \(error)")
+            return nil
+        }
     }
     
     /// Computes the lifespan progress
@@ -156,71 +159,107 @@ final class Shoe {
         }
     }
     
-    // MARK: - Methods to Update Observable Properties
+    // MARK: - Explicit Refresh Methods (SwiftData-Safe)
     
-    /// Updates the active state based on current sessions
-    func updateActiveState() {
-        let newActiveState = computeIsActive()
-        let newActivatedAt = computeActivatedAt()
+    /// Refreshes all computed properties using database queries
+    /// ✅ Safe for SwiftData - doesn't rely on relationship loading state
+    func refreshComputedProperties(using modelContext: ModelContext) async {
+        print("🔄 Refreshing computed properties for \(brand) \(model) using database queries")
         
-        if _isActive != newActiveState || _activatedAt != newActivatedAt {
-            _isActive = newActiveState
-            _activatedAt = newActivatedAt
-            print("🔄 Updated active state for \(brand) \(model): active=\(_isActive)")
-        }
-    }
-    
-    /// Updates the total distance based on current sessions (not entries)
-    func updateTotalDistance() {
-        let newDistance = computeTotalDistanceFromSessions()
-        if _totalDistance != newDistance {
+        do {
+            // Query active sessions directly from database
+            let activeSessionsDescriptor = FetchDescriptor<ShoeSession>(
+                predicate: #Predicate<ShoeSession> { session in
+                    session.endDate == nil
+                }
+            )
+            let allActiveSessions = try modelContext.fetch(activeSessionsDescriptor)
+            let activeSessions = allActiveSessions.filter { session in
+                session.shoe?.persistentModelID == self.persistentModelID
+            }
+            
+            // Query all sessions for distance calculation
+            let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
+            let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
+            let allSessions = allSessionsInDB.filter { session in
+                session.shoe?.persistentModelID == self.persistentModelID
+            }
+            
+            // Update computed properties with fresh data
+            let wasActive = _isActive
             let oldDistance = _totalDistance
-            _totalDistance = newDistance
-            print("🔄 Updated total distance for \(brand) \(model): \(oldDistance) -> \(_totalDistance) km")
+            
+            _isActive = !activeSessions.isEmpty
+            _activatedAt = activeSessions.first?.startDate
+            
+            // Calculate total distance using fallback pattern (sessions OR entries, not both)
+            let sessionDistance = allSessions.reduce(0) { $0 + $1.distance }
+            
+            if !allSessions.isEmpty {
+                // ✅ Use session-based calculation (new system)
+                _totalDistance = sessionDistance
+                print("📊 Using session-based distance: \(String(format: "%.1f", sessionDistance)) km from \(allSessions.count) sessions")
+            } else {
+                // ✅ Fallback to entries-based calculation (legacy system)
+                let entriesDistance = entries.reduce(0) { $0 + $1.distance }
+                _totalDistance = entriesDistance
+                print("📊 Using entries-based distance: \(String(format: "%.1f", entriesDistance)) km from \(entries.count) entries")
+            }
+            _lifespanProgress = computeLifespanProgress()
+            
+            print("✅ Properties updated: active \(wasActive)→\(_isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", _totalDistance)) km")
+            
+        } catch {
+            print("❌ Error refreshing computed properties for \(brand) \(model): \(error)")
         }
     }
     
-    /// Forces a refresh of the total distance calculation
-    /// Call this when you suspect the distance might be out of sync
-    func refreshDistance() {
-        print("🔄 Force refreshing distance for \(brand) \(model)")
-        _totalDistance = computeTotalDistanceFromSessions()
+    /// Quick refresh using already-loaded relationships (fallback)
+    /// ⚠️ Only use when you know relationships are loaded
+    func refreshComputedPropertiesFromMemory() {
+        let wasActive = _isActive
+        let oldDistance = _totalDistance
+        
+        _isActive = sessions.contains { $0.isActive }
+        _activatedAt = sessions.first(where: { $0.isActive })?.startDate
+        
+        // ✅ Use fallback pattern to avoid double-counting
+        if !sessions.isEmpty {
+            _totalDistance = sessions.reduce(0) { $0 + $1.distance }
+        } else {
+            _totalDistance = entries.reduce(0) { $0 + $1.distance }
+        }
         _lifespanProgress = computeLifespanProgress()
+        
+        print("🔄 Memory refresh for \(brand) \(model): active \(wasActive)→\(_isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", _totalDistance)) km")
     }
     
-    /// Call this after SwiftData has loaded all relationships
-    /// This ensures that sessions are available for distance calculation
-    func refreshAfterRelationshipsLoaded() {
-        print("📊 DEBUG: Refreshing \(brand) \(model) after relationships loaded")
-        print("📊 DEBUG: Found \(sessions.count) sessions")
-        refreshDistance()
-        updateActiveState()
-    }
-    
-    /// Computes total distance from all sessions for this shoe
-    private func computeTotalDistanceFromSessions() -> Double {
-        // Use real stored data from sessions
-        let sessionDistance = sessions.reduce(0) { total, session in
-            return total + session.distance
+    /// Forces a complete refresh of distance from database
+    func refreshDistanceFromDatabase(using modelContext: ModelContext) async {
+        do {
+            let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
+            let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
+            let sessions = allSessionsInDB.filter { session in
+                session.shoe?.persistentModelID == self.persistentModelID
+            }
+            
+            // ✅ Use fallback pattern to avoid double-counting
+            let newDistance: Double
+            if !sessions.isEmpty {
+                newDistance = sessions.reduce(0) { $0 + $1.distance }
+            } else {
+                newDistance = entries.reduce(0) { $0 + $1.distance }
+            }
+            
+            if abs(_totalDistance - newDistance) > 0.01 { // Only update if significant change
+                let oldDistance = _totalDistance
+                _totalDistance = newDistance
+                _lifespanProgress = computeLifespanProgress()
+                print("📊 Distance updated for \(brand) \(model): \(String(format: "%.1f", oldDistance)) → \(String(format: "%.1f", _totalDistance)) km")
+            }
+        } catch {
+            print("❌ Error refreshing distance for \(brand) \(model): \(error)")
         }
-        
-        // Also include legacy entries for backward compatibility
-        let entriesDistance = entries.reduce(0) { $0 + $1.distance }
-        
-        let totalDistance = sessionDistance + entriesDistance
-        
-        print("🔍 Distance calculation for \(brand) \(model):")
-        print("   - Sessions: \(sessions.count) sessions = \(sessionDistance) km (real data)")
-        print("   - Entries: \(entries.count) entries = \(entriesDistance) km (legacy)") 
-        print("   - Total: \(totalDistance) km")
-        
-        return totalDistance
-    }
-    
-    /// Updates all computed properties
-    func updateComputedProperties() {
-        updateActiveState()
-        updateTotalDistance()
     }
     
     // MARK: - Session-based Computed Properties

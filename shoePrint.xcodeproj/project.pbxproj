@@ -401,7 +401,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "ShoePrint only reads step count and walking distance data from your Health app to track shoe usage. No health data is written or modified by this app.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "ShoePrint does not write or modify any health data. This permission is required by the system but is not used by the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -433,7 +432,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "ShoePrint only reads step count and walking distance data from your Health app to track shoe usage. No health data is written or modified by this app.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "ShoePrint does not write or modify any health data. This permission is required by the system but is not used by the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -45,8 +45,10 @@ class HealthKitManager: ObservableObject {
     
     init() {
         checkHealthKitAvailability()
-        checkCurrentAuthorizationStatus()
         loadPersistedAuthorizationStatus()
+        checkCurrentAuthorizationStatus()
+        
+        print("🔐 HealthKitManager initialized with authorization: \(isAuthorized)")
     }
     
     // MARK: - Public API
@@ -64,19 +66,37 @@ class HealthKitManager: ObservableObject {
         
         do {
             print("📋 Requesting authorization for: Steps, Walking/Running Distance")
-            try await healthStore.requestAuthorization(toShare: [], read: typesToRead)
             
-            checkCurrentAuthorizationStatus()
-            
-            if !isAuthorized {
-                print("⚠️ Authorization request completed but permissions not fully granted")
-            } else {
-                print("✅ HealthKit permissions successfully granted")
+            // ✅ Use async/await properly with error handling
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                healthStore.requestAuthorization(toShare: [], read: typesToRead) { success, error in
+                    DispatchQueue.main.async {
+                        if let error = error {
+                            print("❌ HealthKit authorization error: \(error)")
+                            continuation.resume(throwing: error)
+                        } else {
+                            print("✅ HealthKit authorization completed with success: \(success)")
+                            
+                            // ✅ Always check status after authorization, regardless of success flag
+                            self.checkCurrentAuthorizationStatus()
+                            
+                            // ✅ Small delay to ensure authorization status is updated
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                self.checkCurrentAuthorizationStatus()
+                                print("🔄 Final authorization status: \(self.isAuthorized)")
+                            }
+                            
+                            continuation.resume()
+                        }
+                    }
+                }
             }
             
         } catch {
             print("❌ Error requesting HealthKit permissions: \(error)")
-            isAuthorized = false
+            await MainActor.run {
+                self.isAuthorized = false
+            }
             throw error
         }
     }
@@ -132,7 +152,19 @@ private extension HealthKitManager {
         print("  - Steps: \(authorizationStatusDescription(stepAuthStatus))")
         print("  - Distance: \(authorizationStatusDescription(distanceAuthStatus))")
         
-        isAuthorized = stepAuthStatus == .sharingAuthorized && distanceAuthStatus == .sharingAuthorized
+        let newAuthorized = stepAuthStatus == .sharingAuthorized && distanceAuthStatus == .sharingAuthorized
+        
+        // ✅ Only update if status actually changed to trigger UI updates
+        if isAuthorized != newAuthorized {
+            isAuthorized = newAuthorized
+            print("🔄 Authorization status changed to: \(isAuthorized)")
+            
+            // ✅ Save the new status
+            if isAuthorized {
+                savePersistedAuthorizationStatus(true)
+            }
+        }
+        
         print("  - Overall authorized: \(isAuthorized)")
     }
     
@@ -164,7 +196,11 @@ private extension HealthKitManager {
             if savedStatus {
                 print("🔓 HealthKitManager: Loading persisted authorization override (true)")
                 isAuthorized = true
+            } else {
+                print("🔓 HealthKitManager: Found persisted authorization override (false)")
             }
+        } else {
+            print("🔓 HealthKitManager: No persisted authorization override found")
         }
     }
     

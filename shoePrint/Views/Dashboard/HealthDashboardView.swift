@@ -107,7 +107,8 @@ struct HealthDashboardView: View {
             }
             .onAppear {
                 if shoeSessionService == nil {
-                    shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: HealthKitManager())
+                    // ✅ Use the shared HealthKitManager from the ViewModel instead of creating a new instance
+                    shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: healthKitViewModel.healthKitManager)
                 }
             }
             .onChange(of: selectedDate) { _, _ in
@@ -593,18 +594,46 @@ struct HealthPermissionView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Allow access to health data to see your hourly steps")
+            Text("ShoePrint needs access to your step count and walking distance data to track shoe usage. This data stays on your device.")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 30)
             
-            Button("Allow Access") {
+            if let error = healthKitViewModel.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+            }
+            
+            Button {
                 Task {
                     await healthKitViewModel.requestPermissions()
                 }
+            } label: {
+                HStack {
+                    if healthKitViewModel.isLoading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Text(healthKitViewModel.isLoading ? "Requesting Access..." : "Allow Access")
+                }
+                .frame(minWidth: 150)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(healthKitViewModel.isLoading)
+            
+            // ✅ Debug override button for testing
+            if healthKitViewModel.error != nil {
+                Button("Override (Debug)") {
+                    healthKitViewModel.overridePermissionStatus()
+                }
+                .buttonStyle(.bordered)
+                .foregroundColor(.orange)
+                .font(.caption)
+            }
         }
         .padding()
     }

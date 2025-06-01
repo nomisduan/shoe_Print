@@ -17,6 +17,7 @@ final class ShoeSessionService: ObservableObject {
     
     private let modelContext: ModelContext
     private let healthKitManager: HealthKitManager
+    private let shoePropertyService: ShoePropertyService
     private let inactivityThreshold: TimeInterval = 6 * 60 * 60 // 6 hours in seconds
     
     @Published var isProcessing = false
@@ -26,6 +27,7 @@ final class ShoeSessionService: ObservableObject {
     init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
         self.modelContext = modelContext
         self.healthKitManager = healthKitManager
+        self.shoePropertyService = ShoePropertyService(modelContext: modelContext)
     }
     
     // MARK: - Session Management
@@ -60,8 +62,8 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Update the shoe's computed properties after session change
-            shoe.updateActiveState()
+            // ✅ Explicit refresh using database queries (SwiftData-safe)
+            await shoe.refreshComputedProperties(using: modelContext)
             
             // Update all shoes that had sessions closed
             await updateAllShoesComputedProperties()
@@ -80,7 +82,8 @@ final class ShoeSessionService: ObservableObject {
     ///   - shoe: The shoe to stop the session for
     ///   - autoClosed: Whether this session was auto-closed due to inactivity
     func stopSession(for shoe: Shoe, autoClosed: Bool = false) async {
-        guard let activeSession = shoe.activeSession else {
+        // ✅ Use database query instead of potentially stale relationship
+        guard let activeSession = await shoe.getActiveSession(using: modelContext) else {
             print("⚠️ No active session to stop for \(shoe.brand) \(shoe.model)")
             return
         }
@@ -92,10 +95,8 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Update the shoe's computed properties after session change
-            shoe.updateActiveState()
-            // ✅ Update distance now that session has final duration
-            shoe.refreshDistance()
+            // ✅ Explicit refresh using database queries (SwiftData-safe)
+            await shoe.refreshComputedProperties(using: modelContext)
             
             print("🛑 Stopped session for \(shoe.brand) \(shoe.model) - Duration: \(activeSession.durationFormatted)")
         } catch {
@@ -122,31 +123,34 @@ final class ShoeSessionService: ObservableObject {
         
         for session in activeSessions {
             session.closeSession()
-            // Update the shoe's state immediately
-            session.shoe?.updateActiveState()
-            // Update distance now that session has final duration
-            session.shoe?.refreshDistance()
             print("🔒 Closed active session for \(session.shoe?.brand ?? "Unknown") - Reason: \(reason)")
         }
         
         if !activeSessions.isEmpty {
             do {
                 try modelContext.save()
+                
+                // ✅ Refresh all affected shoes after save
+                for session in activeSessions {
+                    if let shoe = session.shoe {
+                        await shoe.refreshComputedProperties(using: modelContext)
+                    }
+                }
             } catch {
                 print("❌ Failed to save session closures: \(error)")
             }
         }
     }
     
-    /// Updates computed properties for all shoes
+    /// Updates computed properties for all shoes using database queries
+    /// ✅ SwiftData-safe approach
     private func updateAllShoesComputedProperties() async {
         let descriptor = FetchDescriptor<Shoe>()
         
         do {
             let allShoes = try modelContext.fetch(descriptor)
             for shoe in allShoes {
-                shoe.updateActiveState()
-                shoe.refreshDistance()
+                await shoe.refreshComputedProperties(using: modelContext)
             }
         } catch {
             print("❌ Error updating shoes computed properties: \(error)")
@@ -170,14 +174,19 @@ final class ShoeSessionService: ObservableObject {
                 if !hasRecentSteps {
                     print("⏰ Auto-closing inactive session for \(session.shoe?.brand ?? "Unknown") after \(inactiveTime/3600)h of inactivity")
                     session.closeSession(autoClosed: true)
-                    // Update distance now that session has final duration
-                    session.shoe?.refreshDistance()
                 }
             }
         }
         
         do {
             try modelContext.save()
+            
+            // ✅ Refresh affected shoes after auto-close
+            for session in activeSessions {
+                if let shoe = session.shoe, session.endDate != nil {
+                    await shoe.refreshComputedProperties(using: modelContext)
+                }
+            }
         } catch {
             print("❌ Failed to save auto-closed sessions: \(error)")
         }
@@ -352,13 +361,11 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Update computed properties for affected shoes
+            // ✅ Update computed properties for affected shoes using database queries
             for affectedShoe in affectedShoes {
-                affectedShoe.updateActiveState()
-                affectedShoe.refreshDistance()
+                await affectedShoe.refreshComputedProperties(using: modelContext)
             }
-            shoe.updateActiveState()
-            shoe.refreshDistance()
+            await shoe.refreshComputedProperties(using: modelContext)
             
             print("🕐 Created hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute())) - \(healthKitData.steps) steps, \(String(format: "%.1f", healthKitData.distance)) km")
         } catch {
@@ -384,8 +391,8 @@ final class ShoeSessionService: ObservableObject {
             await createHourSession(for: shoe, hourDate: hourDate)
         }
         
-        // ✅ Final update of all computed properties
-        await updateAllShoesComputedProperties()
+        // ✅ Only refresh the target shoe since individual sessions already handled affected shoes
+        await shoePropertyService.updateShoeAfterSessionChange(shoe)
         
         print("📅 Created \(hourDates.count) hour sessions for \(shoe.brand) \(shoe.model)")
         isProcessing = false
@@ -422,6 +429,8 @@ final class ShoeSessionService: ObservableObject {
             // Fetch all sessions and filter in memory to avoid SwiftData predicate limitations
             let allSessions = try modelContext.fetch(FetchDescriptor<ShoeSession>())
             
+            print("🔍 Checking for conflicts in time range \(startDate.formatted(date: .omitted, time: .shortened)) - \(endDate.formatted(date: .omitted, time: .shortened))")
+            
             // Filter sessions that overlap with our time range
             let conflictingSessions = allSessions.filter { session in
                 // Session starts before our range ends
@@ -430,15 +439,23 @@ final class ShoeSessionService: ObservableObject {
                 // Session ends after our range starts (or is still active)
                 let endsAfterRangeStarts = session.endDate == nil || session.endDate! > startDate
                 
-                return startsBeforeRangeEnds && endsAfterRangeStarts
+                let overlaps = startsBeforeRangeEnds && endsAfterRangeStarts
+                
+                if overlaps {
+                    print("⚠️ Found overlapping session: \(session.shoe?.brand ?? "Unknown") from \(session.startDate.formatted(date: .omitted, time: .shortened)) to \(session.endDate?.formatted(date: .omitted, time: .shortened) ?? "Active")")
+                }
+                
+                return overlaps
             }
             
-            for session in conflictingSessions {
-                print("🗑️ Removing conflicting session for \(session.shoe?.brand ?? "Unknown") at \(session.startDate.formatted(date: .omitted, time: .shortened))")
-                modelContext.delete(session)
-            }
-            
-            if !conflictingSessions.isEmpty {
+            if conflictingSessions.isEmpty {
+                print("✅ No conflicting sessions found")
+            } else {
+                print("🗑️ Removing \(conflictingSessions.count) conflicting sessions")
+                for session in conflictingSessions {
+                    print("🗑️ Deleting: \(session.shoe?.brand ?? "Unknown") \(session.shoe?.model ?? "") session with \(String(format: "%.1f", session.distance)) km")
+                    modelContext.delete(session)
+                }
                 try modelContext.save()
             }
             
@@ -459,10 +476,9 @@ final class ShoeSessionService: ObservableObject {
         
         await removeConflictingSessions(for: hourStart, to: hourEnd)
         
-        // ✅ Update computed properties for affected shoes
+        // ✅ Update computed properties for affected shoes using database queries
         for shoe in affectedShoes {
-            shoe.updateActiveState()
-            shoe.refreshDistance()
+            await shoe.refreshComputedProperties(using: modelContext)
         }
         
         print("🧹 Removed attribution for hour at \(hourStart.formatted(.dateTime.hour().minute()))")
@@ -477,35 +493,27 @@ final class ShoeSessionService: ObservableObject {
     /// - Returns: Tuple containing total steps and distance in kilometers
     private func calculateHealthKitData(from startDate: Date, to endDate: Date) async -> (steps: Int, distance: Double) {
         let calendar = Calendar.current
-        var totalSteps = 0
-        var totalDistance = 0.0
         
-        // Get the date range to cover
-        let startOfHour = calendar.dateInterval(of: .hour, for: startDate)?.start ?? startDate
-        let endOfHour = calendar.dateInterval(of: .hour, for: endDate)?.start ?? endDate
+        print("📊 Calculating HealthKit data for \(startDate.formatted(date: .omitted, time: .shortened)) - \(endDate.formatted(date: .omitted, time: .shortened))")
         
-        var currentHour = startOfHour
+        // ✅ For hour-specific sessions, optimize by fetching only the specific hour
+        let hourComponent = calendar.component(.hour, from: startDate)
+        let dateComponent = calendar.startOfDay(for: startDate)
         
-        while currentHour <= endOfHour {
-            // Fetch HealthKit data for this hour
-            let hourlyData = await healthKitManager.fetchHourlyData(for: currentHour)
+        // Fetch HealthKit data for the specific date
+        let hourlyData = await healthKitManager.fetchHourlyData(for: dateComponent)
+        
+        // Find the specific hour's data
+        if let hourData = hourlyData.first(where: { $0.hour == hourComponent }) {
+            let steps = hourData.steps
+            let distance = hourData.distance // Already in kilometers
             
-            if let hourData = hourlyData.first(where: { $0.hour == calendar.component(.hour, from: currentHour) }) {
-                totalSteps += hourData.steps
-                // Use real distance data from HealthKit (already in kilometers)
-                totalDistance += hourData.distance
-            }
-            
-            // Move to next hour
-            currentHour = calendar.date(byAdding: .hour, value: 1, to: currentHour) ?? currentHour
-            
-            // Safety check to avoid infinite loop
-            if currentHour > endDate.addingTimeInterval(24 * 60 * 60) {
-                break
-            }
+            print("✅ Found HealthKit data for hour \(hourComponent): \(steps) steps, \(String(format: "%.1f", distance)) km")
+            return (steps: steps, distance: distance)
+        } else {
+            print("⚠️ No HealthKit data found for hour \(hourComponent)")
+            return (steps: 0, distance: 0.0)
         }
-        
-        return (steps: totalSteps, distance: totalDistance)
     }
     
     // MARK: - Helper Methods
