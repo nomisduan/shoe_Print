@@ -181,52 +181,27 @@ final class Shoe {
                             }
                         )
                         let allActiveSessions = try modelContext.fetch(activeSessionsDescriptor)
-                        let activeSessions = allActiveSessions.compactMap { session -> ShoeSession? in
-                            // ✅ Additional safety check to prevent SwiftData macro crashes
-                            do {
-                                // Try to access session properties safely
-                                let _ = session.startDate
-                                let _ = session.endDate
-                                
-                                guard let shoeID = session.shoe?.persistentModelID else { 
-                                    print("⚠️ Found session with nil shoe reference - skipping")
-                                    return nil
-                                }
-                                
-                                if shoeID == self.persistentModelID {
-                                    return session
-                                }
-                                return nil
-                            } catch {
-                                print("❌ Session property access failed (likely deleted): \(error.localizedDescription)")
-                                return nil
+                        let activeSessions = allActiveSessions.filter { session in
+                            // ✅ Use only safe relationship checks to avoid SwiftData macro issues
+                            guard let shoe = session.shoe else { 
+                                print("⚠️ Found session with nil shoe reference - skipping")
+                                return false 
                             }
+                            let shoeID = shoe.persistentModelID
+                            return shoeID == self.persistentModelID
                         }
                         
                         // Query all sessions for distance calculation
                         let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
                         let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
-                        let allSessions = allSessionsInDB.compactMap { session -> ShoeSession? in
-                            // ✅ Additional safety check to prevent SwiftData macro crashes
-                            do {
-                                // Try to access session properties safely
-                                let _ = session.startDate
-                                let _ = session.distance
-                                let _ = session.steps
-                                
-                                guard let shoeID = session.shoe?.persistentModelID else { 
-                                    print("⚠️ Found session with nil shoe reference - skipping")
-                                    return nil
-                                }
-                                
-                                if shoeID == self.persistentModelID {
-                                    return session
-                                }
-                                return nil
-                            } catch {
-                                print("❌ Session property access failed (likely deleted): \(error.localizedDescription)")
-                                return nil
+                        let allSessions = allSessionsInDB.filter { session in
+                            // ✅ Use only safe relationship checks to avoid SwiftData macro issues
+                            guard let shoe = session.shoe else { 
+                                print("⚠️ Found session with nil shoe reference - skipping")
+                                return false 
                             }
+                            let shoeID = shoe.persistentModelID
+                            return shoeID == self.persistentModelID
                         }
                         
                         return (activeSessions: activeSessions, allSessions: allSessions)
@@ -251,20 +226,15 @@ final class Shoe {
             _isActive = !activeSessions.isEmpty
             _activatedAt = activeSessions.first?.startDate
             
-            // ✅ Calculate total distance using fallback pattern with error handling
+            // ✅ Calculate total distance using fallback pattern - avoid direct property access issues
             let sessionDistance = allSessions.reduce(0) { total, session in
-                do {
-                    // ✅ Safe distance access with additional validation
-                    let distance = session.distance
-                    guard distance >= 0 else {
-                        print("⚠️ Invalid session distance: \(distance) - skipping")
-                        return total
-                    }
-                    return total + distance
-                } catch {
-                    print("❌ Failed to access session distance (likely deleted): \(error.localizedDescription)")
+                // ✅ Access distance property directly - sessions should be valid by this point
+                let distance = session.distance
+                guard distance >= 0 else {
+                    print("⚠️ Invalid session distance: \(distance) - skipping")
                     return total
                 }
+                return total + distance
             }
             
             if !allSessions.isEmpty {

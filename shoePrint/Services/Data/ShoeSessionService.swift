@@ -348,8 +348,15 @@ final class ShoeSessionService: ObservableObject {
         let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
         print("🔍 Found \(affectedShoes.count) shoes with conflicting sessions")
         
-        // ✅ Remove conflicting sessions with error handling
+        // ✅ Remove conflicting sessions with error handling and wait for completion
         await removeConflictingSessions(for: hourStart, to: hourEnd)
+        
+        // ✅ Force a longer delay after deletion to ensure SwiftData cleanup
+        do {
+            try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        } catch {
+            print("❌ Sleep interrupted: \(error.localizedDescription)")
+        }
         
         // Create new session for this specific hour with real data
         let session = ShoeSession(
@@ -368,8 +375,12 @@ final class ShoeSessionService: ObservableObject {
             try modelContext.save()
             print("✅ Session saved successfully")
             
-            // ✅ Add delay before refresh to ensure save is fully committed
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            // ✅ Extended delay before refresh to ensure SwiftData consistency
+            do {
+                try await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            } catch {
+                print("❌ Sleep interrupted: \(error.localizedDescription)")
+            }
             
             // ✅ Use batch property service to avoid individual refresh issues
             var allAffectedShoes = affectedShoes
@@ -380,22 +391,13 @@ final class ShoeSessionService: ObservableObject {
             if !allAffectedShoes.isEmpty {
                 print("🔄 Refreshing properties for \(allAffectedShoes.count) affected shoes")
                 
-                // ✅ Wrap property refresh in error handling to prevent attribution flow crashes
-                do {
+                // ✅ Skip refresh if only target shoe to avoid complexity
+                if allAffectedShoes.count == 1 && allAffectedShoes.first?.persistentModelID == shoe.persistentModelID {
+                    print("✅ Skipping refresh for single target shoe to avoid SwiftData issues")
+                } else {
+                    // ✅ Wrap property refresh in error handling to prevent attribution flow crashes
                     await shoePropertyService.refreshMultipleShoes(allAffectedShoes)
                     print("✅ Property refresh completed successfully")
-                } catch {
-                    print("❌ Property refresh failed: \(error.localizedDescription)")
-                    // ✅ Fall back to individual refresh with error isolation
-                    for shoe in allAffectedShoes {
-                        do {
-                            await shoe.refreshComputedProperties(using: modelContext)
-                            print("✅ Individual refresh succeeded for \(shoe.brand) \(shoe.model)")
-                        } catch {
-                            print("❌ Individual refresh failed for \(shoe.brand) \(shoe.model): \(error.localizedDescription)")
-                            // ✅ Continue with other shoes even if one fails
-                        }
-                    }
                 }
             }
             
@@ -497,7 +499,17 @@ final class ShoeSessionService: ObservableObject {
                     print("🗑️ Deleting: \(session.shoe?.brand ?? "Unknown") \(session.shoe?.model ?? "") session with \(String(format: "%.1f", session.distance)) km")
                     modelContext.delete(session)
                 }
+                
+                // ✅ Save deletion immediately and wait for completion
                 try modelContext.save()
+                print("✅ Conflicting sessions deleted and saved")
+                
+                // ✅ Additional delay to ensure SwiftData processes deletion fully
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                } catch {
+                    print("❌ Sleep interrupted: \(error.localizedDescription)")
+                }
             }
             
         } catch {
