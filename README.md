@@ -1,189 +1,181 @@
-# shoePrint
+# ShoePrint 👟
 
-**shoePrint** is a comprehensive iOS application built with SwiftUI and SwiftData that enables users to track and manage their shoe usage through seamless HealthKit integration. The app provides detailed analytics, wear patterns, and maintenance tracking for athletic footwear using an intelligent session-based architecture.
+> A sustainable footwear tracking app that helps you make conscious consumption choices by monitoring the real usage and lifespan of your shoes.
 
-## Overview
+ShoePrint encourages mindful consumption by providing detailed insights into your footwear usage patterns, helping you maximize the lifespan of each pair and make informed purchasing decisions.
 
-shoePrint addresses the common challenge faced by runners and fitness enthusiasts: tracking shoe mileage and determining optimal replacement timing. By integrating with Apple HealthKit, the application automatically attributes step count and distance data to specific shoes through temporal sessions, providing valuable insights into wear patterns and helping users maximize their footwear investment.
+## 🌱 Philosophy: Sustainable Footwear Management
 
-## Key Features
+Rather than promoting endless consumption, ShoePrint focuses on:
+- **Maximizing shoe lifespan** through proper usage tracking
+- **Informed purchasing decisions** based on real usage data
+- **Conscious consumption** by understanding actual vs. perceived needs
+- **Repair-first mentality** with integrated maintenance tracking
+- **Quality over quantity** philosophy in footwear choices
 
-### Core Functionality
-- **Shoe Management**: Add, edit, and organize multiple pairs of shoes with detailed specifications
-- **Session-Based Tracking**: Intelligent temporal tracking with automatic session management
-- **Smart Defaults**: Set default shoes that auto-activate when no other shoe is active
-- **Usage Analytics**: Real-time statistics including total distance, step count, usage time, and repair history
+## ✨ Key Features
 
-### Advanced Features
-- **Auto-Management**: Sessions automatically close after 6 hours of inactivity
-- **Batch Attribution**: Select multiple hours and assign to shoes at once
-- **Repair Tracking**: Log repairs and maintenance activities with date stamps
-- **Visual Dashboard**: Intuitive card-based interface with color-coded organization
-- **Archive System**: Keep your collection organized by archiving old shoes
+### 📊 Real-time Activity Tracking
+- **HealthKit Integration**: Leverages real step count and walking distance data
+- **Automatic Attribution**: Smart session management assigns activity to specific shoes
+- **Hourly Precision**: Detailed journal view with hourly step and distance breakdowns
+- **True Data**: No estimations - uses actual HealthKit measurements
 
-### HealthKit Integration
-- **Hourly Data Processing**: Granular step and distance tracking with hourly breakdowns
-- **Session Attribution**: Smart attribution logic assigns data to active sessions
-- **iOS Bug Workarounds**: Robust permission handling with persistent storage
-- **Privacy-First**: All health data remains on-device with user-controlled permissions
+### 👟 Smart Shoe Management
+- **Visual Collection**: Grid-based shoe library with custom colors and emojis
+- **Active Session Tracking**: Real-time monitoring of which shoes you're wearing
+- **Usage Analytics**: Distance, steps, wear time, and repair history per pair
+- **Lifespan Progress**: Track how much life is left in each pair
 
-## Technical Architecture
+### 🔧 Maintenance & Sustainability
+- **Repair Tracking**: Log maintenance and repairs to extend shoe lifespan
+- **Default Shoe System**: Auto-start tracking with your primary pair
+- **Archive System**: Keep historical data while organizing your collection
+- **Durability Insights**: Make data-driven decisions about shoe quality
 
-### Technology Stack
-- **Framework**: SwiftUI (iOS 18.1+)
-- **Data Persistence**: SwiftData with migration support
-- **Health Integration**: HealthKit framework
-- **Architecture Pattern**: MVVM with session-based data management
-- **Async Processing**: Swift Concurrency (async/await)
+### 📅 Historical Journal
+- **Daily Activity View**: Horizontal scrolling timeline of hourly activity
+- **Retrospective Attribution**: Assign past activities to specific shoes
+- **Batch Operations**: Efficiently manage multiple hours of activity
+- **Visual Feedback**: Clear attribution with shoe emojis and colors
 
-### Core Components
+## 🏗️ Technical Architecture
 
-#### Data Models
-- **Shoe**: Core entity with session relationships and computed properties for compatibility
-- **ShoeSession**: Temporal records with start/end dates for precise tracking
-- **StepEntry**: Activity records for repairs and manual entries
-- **HealthKitManager**: Unified HealthKit permissions and data access with iOS bug workarounds
+### Data Layer
+- **SwiftData**: Modern Core Data replacement for local persistence
+- **HealthKit Integration**: Real-time access to step and distance data
+- **Session-Based Tracking**: Precise start/end times for each wearing session
 
-#### Service Layer
-- **ShoeSessionService**: Comprehensive session management including auto-logic and data attribution
-- **HealthKitViewModel**: Coordinates HealthKit data with session-based attribution
+### Real Data Sources
+- **Steps**: Direct from HealthKit step count samples
+- **Distance**: Actual walking/running distance from HealthKit
+- **Duration**: Real session start/end times
+- **No Estimations**: Eliminated all calculated approximations
 
-#### Business Logic
-- **Session Management**: Automatic start/stop with intelligent lifecycle management
-- **Data Attribution**: HealthKit data attributed through sessions for historical accuracy
-- **Auto-Management**: Default shoe auto-activation and inactive session cleanup
-- **Temporal Accuracy**: Complete timeline of shoe usage with precise start/end times
+### Modern iOS Implementation
+- **SwiftUI**: Native iOS interface with smooth animations
+- **Async/Await**: Modern concurrency for HealthKit operations
+- **@Observable**: Latest data binding for responsive UI updates
+- **iOS 18.1+**: Takes advantage of newest platform features
 
-## Installation & Setup
+## 📱 User Interface
+
+### Collection View
+- **Grid Layout**: Two-column shoe collection with visual cards
+- **Real-time Stats**: Live distance and usage statistics
+- **Quick Actions**: Long-press to start/stop wearing sessions
+- **Status Indicators**: Clear visual feedback for active shoes
+
+### Journal Interface
+- **Horizontal Scrolling**: Intuitive timeline navigation
+- **Hourly Columns**: Visual bars showing activity intensity
+- **Smart Attribution**: Tap to assign activities to shoes
+- **Daily Statistics**: Distance and step summaries
+
+### Shoe Details
+- **Comprehensive Stats**: Distance, steps, wear time, repairs
+- **Lifespan Tracking**: Progress indicators for shoe longevity
+- **Purchase History**: Track investment and value per wear
+- **Action Center**: Start sessions, set defaults, log repairs
+
+## 🛠️ Recent Technical Improvements
+
+### HealthKit Data Integration (Latest Update)
+- **Eliminated Estimations**: Removed all 4 km/h walking speed calculations
+- **Real Distance Data**: Direct integration with HealthKit distance measurements
+- **True Step Counts**: Actual step data from device sensors
+- **Session Enhancement**: Store real HealthKit data in ShoeSession objects
+
+### Architecture Enhancements
+- **ShoeSessionService**: Centralized session management with HealthKit integration
+- **Data Consistency**: Unified calculation methods across all views
+- **Performance Optimization**: Efficient data fetching and caching
+- **Debug Improvements**: Enhanced logging for troubleshooting
+
+### UI/UX Polish
+- **Journal Redesign**: Horizontal layout with optimized bar visualization
+- **Responsive Design**: Adaptive layouts for different screen sizes
+- **Visual Consistency**: Unified color schemes and typography
+- **Animation Improvements**: Smooth transitions and feedback
+
+## 🚀 Getting Started
 
 ### Prerequisites
 - iOS 18.1 or later
-- Xcode 16.0 or later
-- Active Apple Developer account (for HealthKit entitlements)
+- iPhone with HealthKit support
+- Health app with step tracking enabled
 
-### Configuration
+### Installation
 1. Clone the repository
-2. Open `shoePrint.xcodeproj` in Xcode
-3. Configure HealthKit entitlements in project capabilities
-4. Build and run on device (HealthKit requires physical device)
+2. Open `shoePrint.xcodeproj` in Xcode 16+
+3. Build and run on device (Simulator has limited HealthKit functionality)
 
-### HealthKit Permissions
-The app requests the following HealthKit permissions:
-- Step Count (read access)
-- Walking + Running Distance (read access)
+### First Run Setup
+1. Grant HealthKit permissions when prompted
+2. Add your first shoe pair to the collection
+3. Start a wearing session to begin tracking
+4. Explore the journal to see your activity attribution
 
-All health data processing occurs on-device and is never transmitted externally.
+## 🎯 Next Steps & Roadmap
 
-## Usage Workflow
+### UI/UX Improvements
+- [ ] **HealthKit Request Enhancement**: Improve permission flow in Journal
+- [ ] **Date Navigation**: Add horizontal swipe gestures in Journal for day switching
+- [ ] **Empty States**: Design collection empty state similar to archives view
+- [ ] **Number Formatting**: Standardize decimal places across all statistics
+- [ ] **Visual Polish**: Enhance iconography and spacing consistency
 
-### Initial Setup
-1. Launch application and grant HealthKit permissions
-2. Add your first pair of shoes with relevant details
-3. Set a shoe as "default" for automatic activation
+### Apple Watch Companion
+- [ ] **Watch App Development**: Standalone watch application
+- [ ] **ShoeCardView Integration**: Reuse existing card components for shoe selection
+- [ ] **Quick Selection**: Rapid shoe switching directly from wrist
+- [ ] **Session Control**: Start/stop wearing sessions from watch
+- [ ] **Activity Sync**: Real-time synchronization with iPhone app
 
-### Daily Usage
-1. Long-press a shoe card to start/stop wearing sessions
-2. Data automatically attributes to active sessions
-3. Review daily/hourly breakdowns in Journal view
-4. Manual attribution available for historical data
+### Advanced Features
+- [ ] **Machine Learning**: Intelligent shoe recommendations based on activity patterns
+- [ ] **Social Features**: Share sustainability achievements with friends
+- [ ] **Carbon Footprint**: Calculate environmental impact of shoe choices
+- [ ] **Shopping Assistant**: Integration with sustainable footwear retailers
+- [ ] **Repair Network**: Connect with local shoe repair services
 
-### Maintenance Tracking
-1. Log repairs and maintenance activities
-2. Monitor wear progression with session-based analytics
-3. Archive retired shoes while preserving historical data
+### Data & Analytics
+- [ ] **Export Functionality**: Export usage data for external analysis
+- [ ] **Advanced Reporting**: Monthly and yearly sustainability reports
+- [ ] **Prediction Models**: Forecast shoe lifespan based on usage patterns
+- [ ] **Cost Analysis**: Track cost-per-wear and investment efficiency
 
-## Project Structure
+## 💚 Sustainability Impact
 
-```
-shoePrint/
-├── Models/
-│   ├── Shoe.swift                    # Core shoe entity with session relationships
-│   ├── ShoeSession.swift             # Session tracking model
-│   ├── StepEntry.swift               # Activity records for repairs
-│   ├── HealthKitManager.swift        # Unified HealthKit integration
-│   └── ShoeMigrationPlan.swift       # SwiftData schema migration
-├── Services/
-│   └── Data/
-│       └── ShoeSessionService.swift  # Session management and auto-logic
-├── ViewModels/
-│   └── HealthKitViewModel.swift      # HealthKit data coordination
-├── Views/
-│   ├── Dashboard/
-│   │   └── HealthDashboardView.swift # Hourly step attribution journal
-│   ├── HealthKit/
-│   │   └── HealthKitSetupView.swift  # Permission management
-│   ├── ShoeCardView.swift            # Primary shoe display component
-│   ├── ShoeDetailView.swift          # Detailed shoe information
-│   ├── ShoeGridView.swift            # Main shoe collection view
-│   ├── ShoeListView.swift            # Archive view
-│   ├── AddAPairView.swift            # Add new shoes
-│   ├── EditPairView.swift            # Edit existing shoes
-│   └── MainView.swift                # Tab-based navigation
-└── Extensions/
-    ├── Color+Extensions.swift        # Custom color definitions
-    ├── Date+Extensions.swift         # Date formatting utilities
-    ├── Measurement+Extensions.swift  # Unit conversion helpers
-    └── PreviewContainer.swift        # SwiftUI preview data
-```
+ShoePrint aims to reduce footwear waste by:
+- **Extending Product Life**: Encouraging maximum use of each pair
+- **Informed Decisions**: Data-driven purchasing based on actual needs
+- **Repair Culture**: Promoting maintenance over replacement
+- **Quality Awareness**: Highlighting differences in shoe durability
+- **Conscious Consumption**: Mindful approach to footwear acquisition
 
-## Technical Highlights
+## 🤝 Contributing
 
-### Session-Based Architecture
-- **Temporal Tracking**: Precise start/end times instead of simple active/inactive states
-- **Auto-Management**: Intelligent session lifecycle with 6-hour inactivity timeout
-- **Data Attribution**: HealthKit data attributed through sessions for historical accuracy
-- **Conflict Resolution**: Smart handling of overlapping sessions and data gaps
+We welcome contributions that align with our sustainability mission:
+- Bug fixes and performance improvements
+- UI/UX enhancements for better user experience
+- Features that promote conscious consumption
+- Documentation and accessibility improvements
 
-### SwiftData Implementation
-- **Modern Persistence**: Declarative data modeling with relationship management
-- **Migration Support**: Seamless schema updates as the app evolves
-- **Optimized Queries**: Efficient data fetching with `@Query` property wrapper
-- **Session Relationships**: Proper modeling of shoe-session-entry relationships
+## 📄 Privacy & Data
 
-### HealthKit Integration Challenges
-- **iOS Permission Bugs**: Implemented persistent storage workarounds for unreliable authorization
-- **Data Attribution Logic**: Session-based attribution replacing direct assignment
-- **Privacy Compliance**: Granular permission management with user control
-- **Performance Optimization**: Efficient hourly data processing with batch operations
+- **Local Storage**: All data stored locally on device
+- **HealthKit Privacy**: Only reads step and distance data
+- **No Tracking**: No analytics or user behavior tracking
+- **User Control**: Complete control over data attribution and deletion
 
-### Architecture Decisions
-- **Session-First Design**: All tracking built around temporal sessions
-- **Service Layer**: Modular design with clear separation of concerns
-- **Async/Await**: Modern concurrency patterns for smooth user experience
-- **Error Handling**: Comprehensive error management with graceful degradation
+## 🚧 TestFlight Deployment Note
 
-## Future Enhancements
-
-### Planned Features
-- **Machine Learning**: Enhanced attribution using Core ML activity recognition
-- **Advanced Analytics**: Trend analysis and predictive maintenance recommendations
-- **Apple Watch Support**: Quick session control from your wrist
-- **Export Capabilities**: Share data with other fitness apps
-
-### Technical Improvements
-- **Widget Extensions**: Home screen widgets for quick stats
-- **Shortcuts Integration**: Siri shortcuts for common actions
-- **Social Features**: Share achievements with running communities
-- **Wear Pattern Analysis**: Visual insights into usage patterns
-
-## Contributing
-
-This is a portfolio project demonstrating iOS development expertise. The codebase showcases:
-- Modern SwiftUI development patterns
-- Sophisticated session-based architecture
-- Complex HealthKit integration with iOS bug workarounds
-- Professional code organization and documentation
-
-## License
-
-This project is developed for portfolio demonstration purposes. All rights reserved.
-
-## Contact
-
-**Simon Naud**  
-iOS Developer  
-[Portfolio] | [LinkedIn] | [GitHub]
+If you encounter issues with TestFlight validation related to health data permissions, ensure that:
+- Only `NSHealthShareUsageDescription` is declared (read permissions only)
+- No write permissions (`NSHealthUpdateUsageDescription`) are requested
+- The permission description clearly states "read-only" access for activity tracking
 
 ---
 
-*shoePrint represents a comprehensive solution for athletic footwear tracking, demonstrating advanced iOS development skills including session-based architecture, HealthKit integration, SwiftData persistence, and sophisticated business logic implementation.* 
+*Built with ❤️ for sustainable living and conscious consumption* 

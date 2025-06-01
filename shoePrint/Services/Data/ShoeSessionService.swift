@@ -16,14 +16,16 @@ final class ShoeSessionService: ObservableObject {
     // MARK: - Properties
     
     private let modelContext: ModelContext
+    private let healthKitManager: HealthKitManager
     private let inactivityThreshold: TimeInterval = 6 * 60 * 60 // 6 hours in seconds
     
     @Published var isProcessing = false
     
     // MARK: - Initialization
     
-    init(modelContext: ModelContext) {
+    init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
         self.modelContext = modelContext
+        self.healthKitManager = healthKitManager
     }
     
     // MARK: - Session Management
@@ -43,7 +45,7 @@ final class ShoeSessionService: ObservableObject {
         
         isProcessing = true
         
-        // Close any existing active sessions
+        // Close any existing active sessions and update their shoes
         await closeAllActiveSessions(reason: "New session started")
         
         // Create new session
@@ -57,6 +59,13 @@ final class ShoeSessionService: ObservableObject {
         
         do {
             try modelContext.save()
+            
+            // ✅ Update the shoe's computed properties after session change
+            shoe.updateActiveState()
+            
+            // Update all shoes that had sessions closed
+            await updateAllShoesComputedProperties()
+            
             print("🚀 Started session for \(shoe.brand) \(shoe.model)" + (autoStarted ? " (auto-started)" : ""))
         } catch {
             print("❌ Failed to save new session: \(error)")
@@ -82,6 +91,12 @@ final class ShoeSessionService: ObservableObject {
         
         do {
             try modelContext.save()
+            
+            // ✅ Update the shoe's computed properties after session change
+            shoe.updateActiveState()
+            // ✅ Update distance now that session has final duration
+            shoe.refreshDistance()
+            
             print("🛑 Stopped session for \(shoe.brand) \(shoe.model) - Duration: \(activeSession.durationFormatted)")
         } catch {
             print("❌ Failed to save session closure: \(error)")
@@ -107,6 +122,10 @@ final class ShoeSessionService: ObservableObject {
         
         for session in activeSessions {
             session.closeSession()
+            // Update the shoe's state immediately
+            session.shoe?.updateActiveState()
+            // Update distance now that session has final duration
+            session.shoe?.refreshDistance()
             print("🔒 Closed active session for \(session.shoe?.brand ?? "Unknown") - Reason: \(reason)")
         }
         
@@ -116,6 +135,21 @@ final class ShoeSessionService: ObservableObject {
             } catch {
                 print("❌ Failed to save session closures: \(error)")
             }
+        }
+    }
+    
+    /// Updates computed properties for all shoes
+    private func updateAllShoesComputedProperties() async {
+        let descriptor = FetchDescriptor<Shoe>()
+        
+        do {
+            let allShoes = try modelContext.fetch(descriptor)
+            for shoe in allShoes {
+                shoe.updateActiveState()
+                shoe.refreshDistance()
+            }
+        } catch {
+            print("❌ Error updating shoes computed properties: \(error)")
         }
     }
     
@@ -136,6 +170,8 @@ final class ShoeSessionService: ObservableObject {
                 if !hasRecentSteps {
                     print("⏰ Auto-closing inactive session for \(session.shoe?.brand ?? "Unknown") after \(inactiveTime/3600)h of inactivity")
                     session.closeSession(autoClosed: true)
+                    // Update distance now that session has final duration
+                    session.shoe?.refreshDistance()
                 }
             }
         }
@@ -294,22 +330,37 @@ final class ShoeSessionService: ObservableObject {
         let hourStart = calendar.date(bySettingHour: calendar.component(.hour, from: hourDate), minute: 0, second: 0, of: hourDate) ?? hourDate
         let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart) ?? hourStart
         
-        // Check for existing session that covers this hour
+        // Calculate real HealthKit data for this hour
+        let healthKitData = await calculateHealthKitData(from: hourStart, to: hourEnd)
+        
+        // Check for existing session that covers this hour and update affected shoes
+        let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
         await removeConflictingSessions(for: hourStart, to: hourEnd)
         
-        // Create new session for this specific hour
+        // Create new session for this specific hour with real data
         let session = ShoeSession(
             startDate: hourStart,
             endDate: hourEnd,
             autoStarted: false,
-            shoe: shoe
+            shoe: shoe,
+            steps: healthKitData.steps,
+            distance: healthKitData.distance
         )
         
         modelContext.insert(session)
         
         do {
             try modelContext.save()
-            print("🕐 Created hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute()))")
+            
+            // ✅ Update computed properties for affected shoes
+            for affectedShoe in affectedShoes {
+                affectedShoe.updateActiveState()
+                affectedShoe.refreshDistance()
+            }
+            shoe.updateActiveState()
+            shoe.refreshDistance()
+            
+            print("🕐 Created hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute())) - \(healthKitData.steps) steps, \(String(format: "%.1f", healthKitData.distance)) km")
         } catch {
             print("❌ Failed to save hour session: \(error)")
         }
@@ -333,8 +384,33 @@ final class ShoeSessionService: ObservableObject {
             await createHourSession(for: shoe, hourDate: hourDate)
         }
         
+        // ✅ Final update of all computed properties
+        await updateAllShoesComputedProperties()
+        
         print("📅 Created \(hourDates.count) hour sessions for \(shoe.brand) \(shoe.model)")
         isProcessing = false
+    }
+    
+    /// Gets shoes that have sessions conflicting with the given time range
+    /// - Parameters:
+    ///   - startDate: Start of the time range
+    ///   - endDate: End of the time range
+    /// - Returns: Array of shoes that will be affected
+    private func getShoesWithConflictingSessions(for startDate: Date, to endDate: Date) async -> [Shoe] {
+        do {
+            let allSessions = try modelContext.fetch(FetchDescriptor<ShoeSession>())
+            
+            let conflictingSessions = allSessions.filter { session in
+                let startsBeforeRangeEnds = session.startDate < endDate
+                let endsAfterRangeStarts = session.endDate == nil || session.endDate! > startDate
+                return startsBeforeRangeEnds && endsAfterRangeStarts
+            }
+            
+            return conflictingSessions.compactMap { $0.shoe }
+        } catch {
+            print("❌ Error getting shoes with conflicting sessions: \(error)")
+            return []
+        }
     }
     
     /// Removes existing sessions that conflict with a new hour range
@@ -378,8 +454,58 @@ final class ShoeSessionService: ObservableObject {
         let hourStart = calendar.date(bySettingHour: calendar.component(.hour, from: hourDate), minute: 0, second: 0, of: hourDate) ?? hourDate
         let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart) ?? hourStart
         
+        // Get affected shoes before removing
+        let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
+        
         await removeConflictingSessions(for: hourStart, to: hourEnd)
+        
+        // ✅ Update computed properties for affected shoes
+        for shoe in affectedShoes {
+            shoe.updateActiveState()
+            shoe.refreshDistance()
+        }
+        
         print("🧹 Removed attribution for hour at \(hourStart.formatted(.dateTime.hour().minute()))")
+    }
+    
+    // MARK: - HealthKit Data Calculation
+    
+    /// Calculates real HealthKit data (steps and distance) for a given time period
+    /// - Parameters:
+    ///   - startDate: Start date of the period
+    ///   - endDate: End date of the period
+    /// - Returns: Tuple containing total steps and distance in kilometers
+    private func calculateHealthKitData(from startDate: Date, to endDate: Date) async -> (steps: Int, distance: Double) {
+        let calendar = Calendar.current
+        var totalSteps = 0
+        var totalDistance = 0.0
+        
+        // Get the date range to cover
+        let startOfHour = calendar.dateInterval(of: .hour, for: startDate)?.start ?? startDate
+        let endOfHour = calendar.dateInterval(of: .hour, for: endDate)?.start ?? endDate
+        
+        var currentHour = startOfHour
+        
+        while currentHour <= endOfHour {
+            // Fetch HealthKit data for this hour
+            let hourlyData = await healthKitManager.fetchHourlyData(for: currentHour)
+            
+            if let hourData = hourlyData.first(where: { $0.hour == calendar.component(.hour, from: currentHour) }) {
+                totalSteps += hourData.steps
+                // Use real distance data from HealthKit (already in kilometers)
+                totalDistance += hourData.distance
+            }
+            
+            // Move to next hour
+            currentHour = calendar.date(byAdding: .hour, value: 1, to: currentHour) ?? currentHour
+            
+            // Safety check to avoid infinite loop
+            if currentHour > endDate.addingTimeInterval(24 * 60 * 60) {
+                break
+            }
+        }
+        
+        return (steps: totalSteps, distance: totalDistance)
     }
     
     // MARK: - Helper Methods

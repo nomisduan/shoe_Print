@@ -21,6 +21,10 @@ final class ShoeSession {
     var autoClosed: Bool            // true if auto-closed due to inactivity
     var shoe: Shoe?                 // Relationship to the shoe
     
+    // Real HealthKit data
+    var steps: Int = 0              // Total steps during this session
+    var distance: Double = 0.0      // Total distance in kilometers during this session
+    
     // MARK: - Initialization
     
     init(
@@ -28,13 +32,17 @@ final class ShoeSession {
         endDate: Date? = nil,
         autoStarted: Bool = false,
         autoClosed: Bool = false,
-        shoe: Shoe? = nil
+        shoe: Shoe? = nil,
+        steps: Int = 0,
+        distance: Double = 0.0
     ) {
         self.startDate = startDate
         self.endDate = endDate
         self.autoStarted = autoStarted
         self.autoClosed = autoClosed
         self.shoe = shoe
+        self.steps = steps
+        self.distance = distance
     }
     
     // MARK: - Computed Properties

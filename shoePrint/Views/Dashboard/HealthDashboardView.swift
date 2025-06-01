@@ -76,9 +76,6 @@ struct HealthDashboardView: View {
             .task {
                 await loadHourlyData()
             }
-            .refreshable {
-                await loadHourlyData()
-            }
             .sheet(isPresented: $showingBatchAttributionSheet) {
                 BatchAttributionSheet(
                     selectedHours: selectedHours,
@@ -110,8 +107,15 @@ struct HealthDashboardView: View {
             }
             .onAppear {
                 if shoeSessionService == nil {
-                    shoeSessionService = ShoeSessionService(modelContext: modelContext)
+                    shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: HealthKitManager())
                 }
+            }
+            .onChange(of: selectedDate) { _, _ in
+                // Reload when date changes
+                Task {
+                    await loadHourlyData()
+                }
+                print("🔄 HealthDashboard: Date changed, reloading data")
             }
     }
 }
@@ -132,19 +136,55 @@ private extension HealthDashboardView {
     }
     
     var dateSelector: some View {
-        HStack {
-            Text(selectedDate, style: .date)
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Spacer()
-            
-            Button {
-                showingDatePicker = true
-            } label: {
-                Image(systemName: "calendar")
+        VStack(spacing: 16) {
+            // Date header
+            HStack {
+                Text(selectedDate, style: .date)
                     .font(.title2)
-                    .foregroundColor(.blue)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button {
+                    showingDatePicker = true
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
+            }
+            
+            // Daily statistics
+            HStack(spacing: 16) {
+                // Total distance for the day
+                VStack(spacing: 4) {
+                    Text(String(format: "%.1f km", totalDailyDistance))
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.blue)
+                    Text(NSLocalizedString("Distance Today", comment: "Daily distance label"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+                
+                // Total steps for the day
+                VStack(spacing: 4) {
+                    Text("\(totalDailySteps)")
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundColor(.green)
+                    Text(NSLocalizedString("Steps Today", comment: "Daily steps label"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(12)
             }
         }
         .padding(.horizontal)
@@ -157,15 +197,15 @@ private extension HealthDashboardView {
     }
     
     var hourlyStepsJournal: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Date selector header - scrollable comme les indicateurs dans Collection
-                dateSelector
-                
-                // Journal content
-                LazyVStack(spacing: 12) {
+        VStack(spacing: 0) {
+            // Date selector header with statistics
+            dateSelector
+            
+            // Fixed height horizontal scrolling journal
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
                     ForEach(Array(hourlySteps.enumerated()), id: \.element.id) { index, hourData in
-                        HourlyStepBarView(
+                        HourlyStepColumnView(
                             hourData: hourData,
                             maxSteps: maxStepsInDay,
                             isSelected: selectedHours.contains(hourData.id),
@@ -180,8 +220,12 @@ private extension HealthDashboardView {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.top, 10)
+                .padding(.top, 20)
+                .padding(.bottom, 10) // Space for hour labels
             }
+            .frame(height: 350) // Increased height to show all elements
+            
+            Spacer()
         }
     }
     
@@ -191,6 +235,15 @@ private extension HealthDashboardView {
     
     var maxStepsInDay: Int {
         hourlySteps.map(\.steps).max() ?? 1
+    }
+    
+    var totalDailySteps: Int {
+        hourlySteps.reduce(0) { $0 + $1.steps }
+    }
+    
+    var totalDailyDistance: Double {
+        // Use real distance data from HealthKit
+        hourlySteps.reduce(0) { $0 + $1.distance }
     }
 }
 
@@ -302,8 +355,8 @@ private extension HealthDashboardView {
 
 // MARK: - Supporting Views
 
-/// Visual bar representation of hourly step data
-struct HourlyStepBarView: View {
+/// Visual column representation of hourly step data
+struct HourlyStepColumnView: View {
     let hourData: HourlyStepData
     let maxSteps: Int
     let isSelected: Bool
@@ -311,25 +364,19 @@ struct HourlyStepBarView: View {
     let onTap: () -> Void
     let onAttributionTap: () -> Void
     
-    private var maxBarWidth: CGFloat {
-        let screenWidth = UIScreen.main.bounds.width
-        let padding: CGFloat = isSelectionMode ? 140 : 100 // Account for checkmark, padding, distance column, and margins
-        return screenWidth - padding
+    private var barHeight: CGFloat {
+        let ratio = CGFloat(hourData.steps) / CGFloat(max(maxSteps, 1))
+        let maxHeight: CGFloat = 200
+        let minHeight: CGFloat = 20
+        return max(minHeight, maxHeight * ratio)
     }
     
     private var barWidth: CGFloat {
-        let ratio = CGFloat(hourData.steps) / CGFloat(max(maxSteps, 1))
-        let calculatedWidth = maxBarWidth * ratio
-        return max(60, min(calculatedWidth, maxBarWidth)) // Minimum 60, maximum maxBarWidth
-    }
-    
-    private var barHeight: CGFloat {
-        50 // Taller rectangles
+        45 // Reduced from 60 to 45
     }
     
     private var barColor: Color {
         if let shoe = hourData.assignedShoe {
-            // Use the color directly from Assets.xcassets (CustomPurple, CustomBlue, etc.)
             return Color(shoe.color)
         } else {
             return Color.clear
@@ -346,83 +393,81 @@ struct HourlyStepBarView: View {
         }
     }
     
+    private var formattedDistance: String {
+        // Use real distance data from HealthKit
+        return hourData.distanceFormatted
+    }
+    
+    // Minimum height required to show the emoji
+    private var shouldShowEmoji: Bool {
+        barHeight >= 40
+    }
+    
     var body: some View {
-        HStack(spacing: 12) {
-            // Selection checkbox
+        VStack(spacing: 8) {
+            // Selection checkbox (top when in selection mode)
             if isSelectionMode {
                 Button {
                     onTap()
                 } label: {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
+                        .font(.title3)
                         .foregroundColor(isSelected ? .blue : .gray)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
             
-            // Step bar rectangle
-            RoundedRectangle(cornerRadius: 12)
-                .fill(barColor)
-                .stroke(strokeColor, lineWidth: isSelected ? 3 : (hourData.assignedShoe == nil ? 1.5 : 0))
-                .frame(width: barWidth, height: barHeight)
-                .overlay(
-                    VStack {
-                        Spacer()
-                        rectangleContent
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6),
-                    alignment: .bottomLeading
-                )
-                .animation(.easeInOut(duration: 0.2), value: barWidth)
-                .animation(.easeInOut(duration: 0.2), value: barColor)
-                .animation(.easeInOut(duration: 0.2), value: isSelected)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if isSelectionMode {
-                        onTap()
-                    } else {
-                        onAttributionTap()
-                    }
+            // Distance display (above bar)
+            if !isSelectionMode {
+                VStack(spacing: 2) {
+                    Text(formattedDistance)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary)
+                    Text("km")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.secondary)
                 }
-            
-            Spacer()
-            
-            // Distance display aligned to the right
-            distanceDisplay
-        }
-    }
-    
-    @ViewBuilder
-    private var rectangleContent: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // Shoe emoji if attributed
-            if let shoe = hourData.assignedShoe {
-                Text(shoe.icon)
-                    .font(.title3)
             }
             
-            // Hour label
+            // Step bar column
+            VStack {
+                Spacer()
+                
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(barColor)
+                    .stroke(strokeColor, lineWidth: isSelected ? 3 : (hourData.assignedShoe == nil ? 1.5 : 0))
+                    .frame(width: barWidth, height: barHeight)
+                    .overlay(
+                        // Shoe emoji at the bottom of the bar (only if bar is tall enough)
+                        VStack {
+                            Spacer()
+                            if shouldShowEmoji, let shoe = hourData.assignedShoe {
+                                Text(shoe.icon)
+                                    .font(.title3)
+                                    .padding(.bottom, 6)
+                            }
+                        }
+                    )
+                    .animation(.easeInOut(duration: 0.2), value: barHeight)
+                    .animation(.easeInOut(duration: 0.2), value: barColor)
+                    .animation(.easeInOut(duration: 0.2), value: isSelected)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if isSelectionMode {
+                            onTap()
+                        } else {
+                            onAttributionTap()
+                        }
+                    }
+            }
+            .frame(height: 200) // Reduced from 220 to 200 for better balance
+            
+            // Hour label (below bar)
             Text(hourData.timeString)
                 .font(.system(.caption, design: .monospaced))
                 .fontWeight(.medium)
-        }
-    }
-    
-    private var distanceDisplay: some View {
-        let distance = Double(hourData.steps) * 0.000762
-        let formattedDistance = distance < 1.0 ? String(format: "%.1f", distance) : String(format: "%.0f", distance)
-        
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(formattedDistance)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundColor(.primary)
-            
-            Text("km")
-                .font(.system(size: 10, weight: .regular))
                 .foregroundColor(.secondary)
         }
-        .frame(width: 40, alignment: .leading)
     }
 }
 
@@ -445,8 +490,8 @@ struct BatchAttributionSheet: View {
     }
     
     private var totalDistance: Double {
-        // Estimate: roughly 0.762 meters per step (average adult)
-        Double(totalSteps) * 0.000762 // Convert to kilometers
+        // Use real distance data from HealthKit
+        selectedHourData.reduce(0) { $0 + $1.distance }
     }
     
     private var timeRange: String {

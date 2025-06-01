@@ -35,7 +35,46 @@ struct ShoeDetailView: View {
             let milesValue = measurement.converted(to: .miles).value
             return String(format: "%.1f mi", milesValue)
         } else {
-            return String(format: "%.0f km", distanceInKm)
+            // Format with thousands separator
+            let numberFormatter = NumberFormatter()
+            numberFormatter.numberStyle = .decimal
+            numberFormatter.groupingSeparator = " "
+            numberFormatter.maximumFractionDigits = 0
+            
+            if let formattedNumber = numberFormatter.string(from: NSNumber(value: distanceInKm)) {
+                return "\(formattedNumber) km"
+            } else {
+                return String(format: "%.0f km", distanceInKm)
+            }
+        }
+    }
+    
+    private func formatSteps(_ steps: Int) -> String {
+        let numberFormatter = NumberFormatter()
+        numberFormatter.numberStyle = .decimal
+        numberFormatter.groupingSeparator = " "
+        
+        if let formattedNumber = numberFormatter.string(from: NSNumber(value: steps)) {
+            return formattedNumber
+        } else {
+            return "\(steps)"
+        }
+    }
+    
+    private func formatWearTime(_ totalHours: Double) -> String {
+        if totalHours < 1 {
+            let minutes = Int(totalHours * 60)
+            return "\(minutes)m"
+        } else if totalHours < 24 {
+            return String(format: "%.1fh", totalHours)
+        } else {
+            let days = Int(totalHours / 24)
+            let remainingHours = Int(totalHours.truncatingRemainder(dividingBy: 24))
+            if remainingHours > 0 {
+                return "\(days)d \(remainingHours)h"
+            } else {
+                return "\(days)d"
+            }
         }
     }
     
@@ -86,7 +125,7 @@ struct ShoeDetailView: View {
                             
                             StatCard(
                                 title: "Total Steps",
-                                value: "\(shoe.totalSteps)",
+                                value: formatSteps(shoe.totalSteps),
                                 icon: "shoeprints.fill",
                                 color: .green
                             )
@@ -94,10 +133,10 @@ struct ShoeDetailView: View {
                         
                         HStack(spacing: 12) {
                             StatCard(
-                                title: "Usage Days",
-                                value: "\(shoe.usageDays)",
-                                icon: "calendar",
-                                color: .orange
+                                title: "Wear Time",
+                                value: formatWearTime(shoe.totalWearTimeHours),
+                                icon: "clock.fill",
+                                color: .mint
                             )
                             
                             StatCard(
@@ -188,7 +227,7 @@ struct ShoeDetailView: View {
                 VStack(spacing: 12) {
                     Button(action: {
                         Task {
-                            let sessionService = ShoeSessionService(modelContext: context)
+                            let sessionService = ShoeSessionService(modelContext: context, healthKitManager: HealthKitManager())
                             await sessionService.toggleSession(for: shoe)
                         }
                     }) {

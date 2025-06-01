@@ -10,6 +10,8 @@ import SwiftData
 
 struct ShoeGridView: View {
     @Query private var shoes: [Shoe]
+    @Environment(\.modelContext) private var modelContext
+    
     @Binding var shoeToDelete: Shoe?
     @Binding var showDeleteAlert: Bool
     
@@ -32,11 +34,20 @@ struct ShoeGridView: View {
     private var totalKilometersThisYear: Double {
         let calendar = Calendar.current
         let currentYear = calendar.component(.year, from: Date())
+        let startOfYear = calendar.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? Date()
+        let endOfYear = calendar.date(from: DateComponents(year: currentYear + 1, month: 1, day: 1)) ?? Date()
         
-        return activeShoes.reduce(0) { total, shoe in
-            let yearlyDistance = shoe.entries
-                .filter { calendar.component(.year, from: $0.startDate) == currentYear }
-                .reduce(0) { $0 + $1.distance }
+        return shoes.reduce(0) { total, shoe in
+            // Calculate distance from sessions in this year for ALL shoes (including archived)
+            let yearSessions = shoe.sessions.filter { session in
+                session.startDate >= startOfYear && session.startDate < endOfYear
+            }
+            
+            // Use real stored distance data from sessions
+            let yearlyDistance = yearSessions.reduce(0) { sessionTotal, session in
+                return sessionTotal + session.distance
+            }
+            
             return total + yearlyDistance
         }
     }
@@ -109,6 +120,7 @@ struct ShoeGridView: View {
                             showEditSheet = true
                         }
                     )
+                    .id("\(shoe.id)-\(shoe.isActive ? "active" : "inactive")") // Force view refresh
                 }
             }
             }
@@ -123,6 +135,8 @@ struct ShoeGridView: View {
             
             for shoe in shoes.prefix(3) { // Afficher les 3 premières pour debug
                 print("👟 \(shoe.brand) \(shoe.model) - Active: \(shoe.isActive), Archived: \(shoe.archived)")
+                // Force refresh distance after relationships are loaded
+                shoe.refreshAfterRelationshipsLoaded()
             }
         }
     }

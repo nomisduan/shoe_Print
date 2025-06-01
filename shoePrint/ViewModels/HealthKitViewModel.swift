@@ -34,7 +34,7 @@ final class HealthKitViewModel: ObservableObject {
     init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
         self.modelContext = modelContext
         self.healthKitManager = healthKitManager
-        self.shoeSessionService = ShoeSessionService(modelContext: modelContext)
+        self.shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: healthKitManager)
         
         checkHealthKitAvailability()
         setupBindings()
@@ -118,6 +118,7 @@ final class HealthKitViewModel: ObservableObject {
                 hour: data.hour,
                 date: Calendar.current.date(bySettingHour: data.hour, minute: 0, second: 0, of: date) ?? date,
                 steps: data.steps,
+                distance: data.distance,
                 assignedShoe: nil // Always nil - attributions come from sessions
             )
         }
@@ -132,11 +133,14 @@ final class HealthKitViewModel: ObservableObject {
         for hour in 8..<22 {
             let hourDate = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date
             let steps = Int.random(in: 100...800)
+            // Generate realistic distance: roughly 0.762 meters per step, converted to km
+            let distance = Double(steps) * 0.000762
             
             sampleData.append(HourlyStepData(
                 hour: hour,
                 date: hourDate,
                 steps: steps,
+                distance: distance,
                 assignedShoe: nil
             ))
         }
@@ -173,6 +177,7 @@ struct HourlyStepData: Identifiable {
     let hour: Int
     let date: Date
     let steps: Int
+    let distance: Double // Real distance from HealthKit in kilometers
     var assignedShoe: Shoe?
     
     var timeString: String {
@@ -181,5 +186,9 @@ struct HourlyStepData: Identifiable {
     
     var stepsFormatted: String {
         "\(steps) steps"
+    }
+    
+    var distanceFormatted: String {
+        return distance < 1.0 ? String(format: "%.1f", distance) : String(format: "%.0f", distance)
     }
 } 

@@ -25,7 +25,34 @@ final class Shoe {
     
     // MARK: - Session Relationship
     @Relationship(deleteRule: .cascade, inverse: \ShoeSession.shoe)
-    var sessions: [ShoeSession] = []
+    var sessions: [ShoeSession] = [] {
+        didSet {
+            // Automatically update computed properties when sessions change
+            _isActive = computeIsActive()
+            _activatedAt = computeActivatedAt()
+            // Update distance when sessions change
+            updateTotalDistance()
+        }
+    }
+    
+    // MARK: - Stored Properties for Observable State
+    
+    /// Stored property for active state (observable by SwiftUI)
+    private var _isActive: Bool = false
+    
+    /// Stored property for activation date (observable by SwiftUI)
+    private var _activatedAt: Date? = nil
+    
+    /// Stored property for total distance (observable by SwiftUI)
+    private var _totalDistance: Double = 0.0 {
+        didSet {
+            // Update lifespan progress when distance changes
+            _lifespanProgress = computeLifespanProgress()
+        }
+    }
+    
+    /// Stored property for lifespan progress (observable by SwiftUI)
+    private var _lifespanProgress: Double = 0.0
 
     init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isDefault: Bool = false, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
         self.timestamp = timestamp
@@ -40,23 +67,64 @@ final class Shoe {
         self.purchasePrice = purchasePrice
         self.estimatedLifespan = estimatedLifespan
         self.entries = entries
+        
+        // Initialize computed properties
+        self._isActive = false
+        self._activatedAt = nil
+        // Initialize with entries distance (sessions will be empty at init)
+        self._totalDistance = entries.reduce(0) { $0 + $1.distance }
+        self._lifespanProgress = computeLifespanProgress()
+        
+        print("🏗️ DEBUG: Initialized shoe \(brand) \(model) with distance: \(_totalDistance) km from \(entries.count) entries")
     }
     
-    // MARK: - Session-based Computed Properties
+    // MARK: - Public Observable Properties
+    
+    /// Returns true if this shoe has an active session (currently being worn)
+    var isActive: Bool {
+        get { _isActive }
+        set { _isActive = newValue }
+    }
+    
+    /// Returns the timestamp when the shoe was last activated
+    var activatedAt: Date? {
+        get { _activatedAt }
+        set { _activatedAt = newValue }
+    }
+    
+    /// Returns the total distance for this shoe
+    var totalDistance: Double {
+        get { _totalDistance }
+        set { _totalDistance = newValue }
+    }
+    
+    /// Returns the lifespan progress (0.0 to 1.0)
+    var lifespanProgress: Double {
+        get { _lifespanProgress }
+        set { _lifespanProgress = newValue }
+    }
+    
+    // MARK: - Session-based Computed Properties (for internal use)
     
     /// Returns the currently active session, if any
     var activeSession: ShoeSession? {
         sessions.first(where: { $0.isActive })
     }
     
-    /// Returns true if this shoe has an active session (currently being worn)
-    var isActive: Bool {
-        activeSession != nil
+    /// Computes if the shoe is currently active
+    private func computeIsActive() -> Bool {
+        return activeSession != nil
     }
     
-    /// Returns the timestamp when the shoe was last activated (for compatibility)
-    var activatedAt: Date? {
-        activeSession?.startDate
+    /// Computes the activation date
+    private func computeActivatedAt() -> Date? {
+        return activeSession?.startDate
+    }
+    
+    /// Computes the lifespan progress
+    private func computeLifespanProgress() -> Double {
+        guard estimatedLifespan > 0 else { return 0.0 }
+        return min(_totalDistance / estimatedLifespan, 1.0)
     }
     
     /// Returns all sessions for today
@@ -88,14 +156,112 @@ final class Shoe {
         }
     }
     
-    // MARK: - Computed Properties
+    // MARK: - Methods to Update Observable Properties
     
-    var totalDistance: Double {
-        entries.reduce(0) { $0 + $1.distance }
+    /// Updates the active state based on current sessions
+    func updateActiveState() {
+        let newActiveState = computeIsActive()
+        let newActivatedAt = computeActivatedAt()
+        
+        if _isActive != newActiveState || _activatedAt != newActivatedAt {
+            _isActive = newActiveState
+            _activatedAt = newActivatedAt
+            print("🔄 Updated active state for \(brand) \(model): active=\(_isActive)")
+        }
     }
     
+    /// Updates the total distance based on current sessions (not entries)
+    func updateTotalDistance() {
+        let newDistance = computeTotalDistanceFromSessions()
+        if _totalDistance != newDistance {
+            let oldDistance = _totalDistance
+            _totalDistance = newDistance
+            print("🔄 Updated total distance for \(brand) \(model): \(oldDistance) -> \(_totalDistance) km")
+        }
+    }
+    
+    /// Forces a refresh of the total distance calculation
+    /// Call this when you suspect the distance might be out of sync
+    func refreshDistance() {
+        print("🔄 Force refreshing distance for \(brand) \(model)")
+        _totalDistance = computeTotalDistanceFromSessions()
+        _lifespanProgress = computeLifespanProgress()
+    }
+    
+    /// Call this after SwiftData has loaded all relationships
+    /// This ensures that sessions are available for distance calculation
+    func refreshAfterRelationshipsLoaded() {
+        print("📊 DEBUG: Refreshing \(brand) \(model) after relationships loaded")
+        print("📊 DEBUG: Found \(sessions.count) sessions")
+        refreshDistance()
+        updateActiveState()
+    }
+    
+    /// Computes total distance from all sessions for this shoe
+    private func computeTotalDistanceFromSessions() -> Double {
+        // Use real stored data from sessions
+        let sessionDistance = sessions.reduce(0) { total, session in
+            return total + session.distance
+        }
+        
+        // Also include legacy entries for backward compatibility
+        let entriesDistance = entries.reduce(0) { $0 + $1.distance }
+        
+        let totalDistance = sessionDistance + entriesDistance
+        
+        print("🔍 Distance calculation for \(brand) \(model):")
+        print("   - Sessions: \(sessions.count) sessions = \(sessionDistance) km (real data)")
+        print("   - Entries: \(entries.count) entries = \(entriesDistance) km (legacy)") 
+        print("   - Total: \(totalDistance) km")
+        
+        return totalDistance
+    }
+    
+    /// Updates all computed properties
+    func updateComputedProperties() {
+        updateActiveState()
+        updateTotalDistance()
+    }
+    
+    // MARK: - Session-based Computed Properties
+    
+    /// Returns total steps from all sessions (real data)
+    var totalStepsFromSessions: Int {
+        return sessions.reduce(0) { total, session in
+            return total + session.steps
+        }
+    }
+    
+    /// Returns the number of days this shoe has been used
+    var usageDaysFromSessions: Int {
+        let calendar = Calendar.current
+        let uniqueDays = Set(sessions.map { session in
+            calendar.startOfDay(for: session.startDate)
+        })
+        return uniqueDays.count
+    }
+    
+    /// Returns the last time this shoe was used
+    var lastUsedFromSessions: Date? {
+        return sessions.compactMap { $0.endDate }.max() ?? sessions.map { $0.startDate }.max()
+    }
+    
+    /// Returns total hours this shoe has been worn
+    var totalWearTimeHours: Double {
+        return sessions.reduce(0) { total, session in
+            total + session.durationInHours
+        }
+    }
+    
+    // MARK: - Legacy Computed Properties (for backward compatibility)
+    
     var totalSteps: Int {
-        entries.reduce(0) { $0 + $1.steps }
+        // Use session-based calculation if sessions exist, otherwise fall back to entries
+        if !sessions.isEmpty {
+            return totalStepsFromSessions
+        } else {
+            return entries.reduce(0) { $0 + $1.steps }
+        }
     }
     
     var totalRepairs: Int {
@@ -103,18 +269,23 @@ final class Shoe {
     }
     
     var lastUsed: Date? {
-        entries.map { $0.endDate }.max()
+        // Use session-based calculation if sessions exist, otherwise fall back to entries
+        if !sessions.isEmpty {
+            return lastUsedFromSessions
+        } else {
+            return entries.map { $0.endDate }.max()
+        }
     }
     
     var usageDays: Int {
-        let calendar = Calendar.current
-        let uniqueDays = Set(entries.map { calendar.startOfDay(for: $0.startDate) })
-        return uniqueDays.count
-    }
-    
-    var lifespanProgress: Double {
-        guard estimatedLifespan > 0 else { return 0.0 }
-        return min(totalDistance / estimatedLifespan, 1.0)
+        // Use session-based calculation if sessions exist, otherwise fall back to entries
+        if !sessions.isEmpty {
+            return usageDaysFromSessions
+        } else {
+            let calendar = Calendar.current
+            let uniqueDays = Set(entries.map { calendar.startOfDay(for: $0.startDate) })
+            return uniqueDays.count
+        }
     }
     
     // MARK: - Business Logic Methods

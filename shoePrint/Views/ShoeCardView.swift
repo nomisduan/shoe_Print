@@ -112,7 +112,7 @@ struct ShoeCardView: View {
             // Change state and return to normal size immediately
             withAnimation(.easeOut(duration: 0.2)) {
                 Task {
-                    let sessionService = ShoeSessionService(modelContext: context)
+                    let sessionService = ShoeSessionService(modelContext: context, healthKitManager: HealthKitManager())
                     await sessionService.toggleSession(for: shoe)
                 }
                 // Return to normal size immediately
