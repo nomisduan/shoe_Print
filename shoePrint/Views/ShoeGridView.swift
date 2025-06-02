@@ -21,7 +21,11 @@ struct ShoeGridView: View {
     @Binding var shoeToEdit: Shoe?
     @Binding var showEditSheet: Bool
     
+    let healthKitViewModel: HealthKitViewModel?
+    
     @State private var showStepsInHeader = false
+    @State private var yearToDateSteps = 0
+    @State private var yearToDateDistance = 0.0
    
     let columns = [
         GridItem(.flexible(), spacing: 20),
@@ -31,48 +35,6 @@ struct ShoeGridView: View {
     // Computed properties for statistics
     private var activeShoes: [Shoe] {
         shoes.filter { !$0.archived }
-    }
-    
-    private var totalKilometersThisYear: Double {
-        let calendar = Calendar.current
-        let currentYear = calendar.component(.year, from: Date())
-        let startOfYear = calendar.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? Date()
-        let endOfYear = calendar.date(from: DateComponents(year: currentYear + 1, month: 1, day: 1)) ?? Date()
-        
-        return shoes.reduce(0) { total, shoe in
-            // Calculate distance from sessions in this year for ALL shoes (including archived)
-            let yearSessions = shoe.sessions.filter { session in
-                session.startDate >= startOfYear && session.startDate < endOfYear
-            }
-            
-            // Use real stored distance data from sessions
-            let yearlyDistance = yearSessions.reduce(0) { sessionTotal, session in
-                return sessionTotal + session.distance
-            }
-            
-            return total + yearlyDistance
-        }
-    }
-    
-    private var totalStepsThisYear: Int {
-        let calendar = Calendar.current
-        let currentYear = calendar.component(.year, from: Date())
-        let startOfYear = calendar.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? Date()
-        let endOfYear = calendar.date(from: DateComponents(year: currentYear + 1, month: 1, day: 1)) ?? Date()
-        
-        return shoes.reduce(0) { total, shoe in
-            // Calculate steps from sessions in this year for ALL shoes (including archived)
-            let yearSessions = shoe.sessions.filter { session in
-                session.startDate >= startOfYear && session.startDate < endOfYear
-            }
-            
-            // Use real stored steps data from sessions
-            let yearlySteps = yearSessions.reduce(0) { sessionTotal, session in
-                return sessionTotal + session.steps
-            }
-            
-            return total + yearlySteps
-        }
     }
     
     private var totalRepairs: Int {
@@ -108,11 +70,11 @@ struct ShoeGridView: View {
                                 Image(systemName: showStepsInHeader ? "figure.walk" : "shoeprints.fill")
                                     .foregroundStyle(.green)
                                 if showStepsInHeader {
-                                    Text(totalStepsThisYear.formattedCompactSteps)
+                                    Text(yearToDateSteps.formattedCompactSteps)
                                         .fontWeight(.semibold)
                                         .foregroundColor(.primary)
                                 } else {
-                                    Text(totalKilometersThisYear.formattedDistance)
+                                    Text(yearToDateDistance.formattedDistance)
                                         .fontWeight(.semibold)
                                         .foregroundColor(.primary)
                                 }
@@ -178,6 +140,29 @@ struct ShoeGridView: View {
                     await shoe.refreshComputedProperties(using: modelContext)
                 }
             }
+            
+            // Load HealthKit year-to-date totals
+            Task {
+                await loadYearToDateTotals()
+            }
+        }
+    }
+    
+    // MARK: - Private Methods
+    
+    /// Loads year-to-date totals from HealthKit
+    private func loadYearToDateTotals() async {
+        guard let viewModel = healthKitViewModel else {
+            print("⚠️ No HealthKitViewModel available for year-to-date totals")
+            return
+        }
+        
+        let totals = await viewModel.fetchYearToDateTotals()
+        
+        await MainActor.run {
+            yearToDateSteps = totals.steps
+            yearToDateDistance = totals.distance
+            print("📊 Loaded year-to-date totals: \(yearToDateSteps.formattedSteps) steps, \(yearToDateDistance.formattedDistance) km")
         }
     }
 }

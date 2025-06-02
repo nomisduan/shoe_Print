@@ -43,6 +43,11 @@ final class HealthKitViewModel: ObservableObject {
         
         checkHealthKitAvailability()
         setupBindings()
+        
+        // ✅ Recheck authorization status on startup to ensure consistency
+        Task {
+            await recheckAuthorizationStatus()
+        }
     }
     
     // MARK: - Public Methods
@@ -110,6 +115,51 @@ final class HealthKitViewModel: ObservableObject {
         } else {
             print("🔬 Generating sample hourly data for testing (HealthKit not authorized)")
             return generateSampleHourlyData(for: date)
+        }
+    }
+    
+    /// Fetches total HealthKit data since January 1st of current year
+    func fetchYearToDateTotals() async -> (steps: Int, distance: Double) {
+        if !isPermissionGranted {
+            print("🔬 Using sample data for year-to-date totals (HealthKit not authorized)")
+            return (steps: Int.random(in: 500_000...2_000_000), distance: Double.random(in: 400...1500))
+        }
+        
+        let calendar = Calendar.current
+        let currentYear = calendar.component(.year, from: Date())
+        let startOfYear = calendar.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? Date()
+        let now = Date()
+        
+        print("📊 Fetching HealthKit data from \(startOfYear) to \(now)")
+        
+        // Calculate all dates from start of year to today
+        var totalSteps = 0
+        var totalDistance = 0.0
+        var currentDate = startOfYear
+        
+        while currentDate <= now {
+            let dailyData = await _healthKitManager.fetchHourlyData(for: currentDate)
+            
+            let dailySteps = dailyData.reduce(0) { $0 + $1.steps }
+            let dailyDistance = dailyData.reduce(0.0) { $0 + $1.distance }
+            
+            totalSteps += dailySteps
+            totalDistance += dailyDistance
+            
+            // Move to next day
+            currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? now
+        }
+        
+        print("📊 Year-to-date totals: \(totalSteps) steps, \(totalDistance) km")
+        return (steps: totalSteps, distance: totalDistance)
+    }
+    
+    /// Rechecks authorization status (useful on app startup)
+    func recheckAuthorizationStatus() async {
+        print("🔄 HealthKitViewModel: Rechecking authorization status...")
+        await MainActor.run {
+            _healthKitManager.checkCurrentAuthorizationStatus()
+            print("🔄 HealthKitViewModel: Authorization status after recheck: \(isPermissionGranted)")
         }
     }
     

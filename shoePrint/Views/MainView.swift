@@ -31,7 +31,8 @@ struct MainView: View {
                                  shoeToArchive: $shoeToArchive,
                                  showArchiveAlert: $showArchiveAlert,
                                  shoeToEdit: $shoeToEdit,
-                                 showEditSheet: $showEditSheet
+                                 showEditSheet: $showEditSheet,
+                                 healthKitViewModel: healthKitViewModel
                     )
                     .background(Color(UIColor.systemGroupedBackground))
                     .navigationTitle("Collection")

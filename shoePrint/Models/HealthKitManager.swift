@@ -45,8 +45,13 @@ class HealthKitManager: ObservableObject {
     
     init() {
         checkHealthKitAvailability()
-        loadPersistedAuthorizationStatus()
+        // ✅ Check real HealthKit authorization first
         checkCurrentAuthorizationStatus()
+        
+        // ✅ Only load persisted status if real status is not determined or seems incorrect
+        if !isAuthorized {
+            loadPersistedAuthorizationStatus()
+        }
         
         print("🔐 HealthKitManager initialized with authorization: \(isAuthorized)")
     }
@@ -130,20 +135,8 @@ class HealthKitManager: ObservableObject {
         print("📊 HealthKitManager: Fetched \(hourlyData.count) hourly data points")
         return hourlyData
     }
-}
-
-// MARK: - Private Methods
-
-private extension HealthKitManager {
     
-    func checkHealthKitAvailability() {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            print("❌ HealthKit is not available on this device")
-            return
-        }
-        print("✅ HealthKit is available on this device")
-    }
-    
+    /// Checks and updates current HealthKit authorization status
     func checkCurrentAuthorizationStatus() {
         let stepAuthStatus = healthStore.authorizationStatus(for: stepType)
         let distanceAuthStatus = healthStore.authorizationStatus(for: distanceType)
@@ -159,13 +152,27 @@ private extension HealthKitManager {
             isAuthorized = newAuthorized
             print("🔄 Authorization status changed to: \(isAuthorized)")
             
-            // ✅ Save the new status
+            // ✅ Save the new status and clean up old override if real permissions are granted
             if isAuthorized {
                 savePersistedAuthorizationStatus(true)
+                cleanupObsoleteOverride()
             }
         }
         
         print("  - Overall authorized: \(isAuthorized)")
+    }
+}
+
+// MARK: - Private Methods
+
+private extension HealthKitManager {
+    
+    func checkHealthKitAvailability() {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            print("❌ HealthKit is not available on this device")
+            return
+        }
+        print("✅ HealthKit is available on this device")
     }
     
     func authorizationStatusDescription(_ status: HKAuthorizationStatus) -> String {
@@ -193,20 +200,30 @@ private extension HealthKitManager {
     func loadPersistedAuthorizationStatus() {
         if UserDefaults.standard.object(forKey: authOverrideKey) != nil {
             let savedStatus = UserDefaults.standard.bool(forKey: authOverrideKey)
-            if savedStatus {
-                print("🔓 HealthKitManager: Loading persisted authorization override (true)")
+            if savedStatus && !isAuthorized {
+                print("🔓 HealthKitManager: Loading persisted authorization override (true) as fallback")
                 isAuthorized = true
+            } else if savedStatus {
+                print("🔓 HealthKitManager: Found persisted authorization override (true) but real status is already correct")
             } else {
-                print("🔓 HealthKitManager: Found persisted authorization override (false)")
+                print("🔓 HealthKitManager: Found persisted authorization override (false) - keeping current status")
             }
         } else {
-            print("🔓 HealthKitManager: No persisted authorization override found")
+            print("🔓 HealthKitManager: No persisted authorization override found - relying on real HealthKit status")
         }
     }
     
     func savePersistedAuthorizationStatus(_ authorized: Bool) {
         UserDefaults.standard.set(authorized, forKey: authOverrideKey)
         print("🔓 HealthKitManager: Saved authorization status: \(authorized)")
+    }
+    
+    func cleanupObsoleteOverride() {
+        // If real HealthKit permissions are granted, we don't need the override anymore
+        if isAuthorized && UserDefaults.standard.object(forKey: authOverrideKey) != nil {
+            UserDefaults.standard.removeObject(forKey: authOverrideKey)
+            print("🧹 HealthKitManager: Cleaned up obsolete authorization override - using real HealthKit permissions")
+        }
     }
 }
 
