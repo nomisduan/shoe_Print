@@ -194,7 +194,7 @@ private extension JournalView {
             // Daily statistics with StatCard design from ShoeDetailView
             HStack(spacing: 12) {
                 StatCard(
-                    title: NSLocalizedString("Distance Today", comment: "Daily distance label"),
+                    title: NSLocalizedString("Distance", comment: "Distance label"),
                     value: totalDailyDistance.formattedDistance,
                     unit: "km",
                     icon: "figure.walk",
@@ -202,7 +202,7 @@ private extension JournalView {
                 )
                 
                 StatCard(
-                    title: NSLocalizedString("Steps Today", comment: "Daily steps label"),
+                    title: NSLocalizedString("Steps", comment: "Steps label"),
                     value: totalDailySteps.formattedSteps,
                     unit: "steps",
                     icon: "shoeprints.fill",
