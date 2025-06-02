@@ -9,6 +9,7 @@ extension NumberFormatter {
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
         formatter.groupingSeparator = " "
+        formatter.decimalSeparator = "."
         formatter.usesGroupingSeparator = true
         return formatter
     }()
@@ -20,6 +21,7 @@ extension NumberFormatter {
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 0
         formatter.groupingSeparator = " "
+        formatter.decimalSeparator = "."
         formatter.usesGroupingSeparator = true
         return formatter
     }()
@@ -31,6 +33,7 @@ extension NumberFormatter {
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 1
         formatter.groupingSeparator = " "
+        formatter.decimalSeparator = "."
         formatter.usesGroupingSeparator = true
         return formatter
     }()

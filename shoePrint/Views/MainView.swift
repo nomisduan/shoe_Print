@@ -35,19 +35,33 @@ struct MainView: View {
                                  healthKitViewModel: healthKitViewModel
                     )
                     .background(Color(UIColor.systemGroupedBackground))
-                    .navigationTitle("Collection")
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        Button {
-                            showingAddSheet.toggle()
-                        } label: {
-                            Text("Add")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.accentColor)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.gray.opacity(0.2))
-                                .clipShape(Capsule())
+                        // Custom title
+                        ToolbarItem(placement: .principal) {
+                            HStack {
+                                Text("COLLECTION")
+                                    .font(.largeTitle)
+                                    .fontWeight(.black)
+                                    .italic()
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                        }
+                        
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingAddSheet.toggle()
+                            } label: {
+                                Text("Add")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.accentColor)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.gray.opacity(0.2))
+                                    .clipShape(Capsule())
+                            }
                         }
                     }
                 }
@@ -56,7 +70,7 @@ struct MainView: View {
                 // Health Dashboard Tab
                 if let viewModel = healthKitViewModel {
                     NavigationStack {
-                        HealthDashboardView(healthKitViewModel: viewModel)
+                        JournalView(healthKitViewModel: viewModel)
                             .background(Color(UIColor.systemGroupedBackground))
                     }
                     .tabItem { Label("Journal", systemImage: "checklist") }
@@ -72,7 +86,20 @@ struct MainView: View {
                 NavigationStack {
                     ShoeListView()
                         .background(Color(UIColor.systemGroupedBackground))
-                        .navigationTitle("Archive")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            // Custom title
+                            ToolbarItem(placement: .principal) {
+                                HStack {
+                                    Text("ARCHIVE")
+                                        .font(.largeTitle)
+                                        .fontWeight(.black)
+                                        .italic()
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                }
+                            }
+                        }
                 }
                 .tabItem {
                     Label("Archive", systemImage: "archivebox")

@@ -258,6 +258,6 @@ struct HourlyStepData: Identifiable {
     }
     
     var distanceFormatted: String {
-        return distance < 1.0 ? String(format: "%.1f", distance) : String(format: "%.0f", distance)
+        return distance.formattedDistance
     }
 } 

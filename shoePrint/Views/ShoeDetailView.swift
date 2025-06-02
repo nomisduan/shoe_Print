@@ -23,7 +23,7 @@ struct ShoeDetailView: View {
         return formatted.contains("mi") ? "mi" : "km"
     }
     
-    private func formatDistance(_ distanceKm: Double) -> String {
+    private func formatDistance(_ distanceKm: Double) -> (value: String, unit: String) {
         let formatter = MeasurementFormatter()
         let testMeasurement = Measurement(value: 1000, unit: UnitLength.meters)
         let testFormatted = formatter.string(from: testMeasurement)
@@ -31,29 +31,29 @@ struct ShoeDetailView: View {
         
         if preferredUnit == "mi" {
             let miles = distanceKm * 0.621371
-            return "\(miles.formattedDistance) mi"
+            return (value: miles.formattedDistance, unit: "mi")
         } else {
-            return "\(distanceKm.formattedDistance) km"
+            return (value: distanceKm.formattedDistance, unit: "km")
         }
     }
     
-    private func formatSteps(_ steps: Int) -> String {
-        return steps.formattedSteps
+    private func formatSteps(_ steps: Int) -> (value: String, unit: String) {
+        return (value: steps.formattedSteps, unit: "steps")
     }
     
-    private func formatWearTime(_ totalHours: Double) -> String {
+    private func formatWearTime(_ totalHours: Double) -> (value: String, unit: String) {
         if totalHours < 1 {
             let minutes = Int(totalHours * 60)
-            return "\(minutes)m"
+            return (value: "\(minutes)", unit: "min")
         } else if totalHours < 24 {
-            return String(format: "%.1fh", totalHours)
+            return (value: String(format: "%.1f", totalHours), unit: "hours")
         } else {
             let days = Int(totalHours / 24)
             let remainingHours = Int(totalHours.truncatingRemainder(dividingBy: 24))
             if remainingHours > 0 {
-                return "\(days)d \(remainingHours)h"
+                return (value: "\(days).\(remainingHours)", unit: "days")
             } else {
-                return "\(days)d"
+                return (value: "\(days)", unit: "days")
             }
         }
     }
@@ -96,25 +96,31 @@ struct ShoeDetailView: View {
                     
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
+                            let distanceData = formatDistance(shoe.totalDistance)
                             StatCard(
                                 title: "Total Distance",
-                                value: formatDistance(shoe.totalDistance),
+                                value: distanceData.value,
+                                unit: distanceData.unit,
                                 icon: "figure.walk",
                                 color: .blue
                             )
                             
+                            let stepsData = formatSteps(shoe.totalSteps)
                             StatCard(
                                 title: "Total Steps",
-                                value: formatSteps(shoe.totalSteps),
+                                value: stepsData.value,
+                                unit: stepsData.unit,
                                 icon: "shoeprints.fill",
                                 color: .green
                             )
                         }
                         
                         HStack(spacing: 12) {
+                            let wearTimeData = formatWearTime(shoe.totalWearTimeHours)
                             StatCard(
                                 title: "Wear Time",
-                                value: formatWearTime(shoe.totalWearTimeHours),
+                                value: wearTimeData.value,
+                                unit: wearTimeData.unit,
                                 icon: "clock.fill",
                                 color: .mint
                             )
@@ -122,6 +128,7 @@ struct ShoeDetailView: View {
                             StatCard(
                                 title: "Repairs",
                                 value: "\(shoe.totalRepairs)",
+                                unit: "repairs",
                                 icon: "wrench.and.screwdriver.fill",
                                 color: .purple
                             )
@@ -137,9 +144,11 @@ struct ShoeDetailView: View {
                     
                     VStack(spacing: 8) {
                         HStack {
-                            Text(formatDistance(shoe.totalDistance))
+                            let currentDistance = formatDistance(shoe.totalDistance)
+                            let maxDistance = formatDistance(shoe.estimatedLifespan)
+                            Text("\(currentDistance.value) \(currentDistance.unit)")
                             Spacer()
-                            Text(formatDistance(shoe.estimatedLifespan))
+                            Text("\(maxDistance.value) \(maxDistance.unit)")
                         }
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -152,8 +161,11 @@ struct ShoeDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(12)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1.5)
+                    )
                 }
                 
                 // Informations d'achat
@@ -309,28 +321,47 @@ struct ShoeDetailView: View {
 struct StatCard: View {
     let title: String
     let value: String
+    let unit: String
     let icon: String
     let color: Color
     
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
+        VStack(spacing: 12) {
+            // Icon and title in the same HStack
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.headline) // Reduced from .title2 to .headline
+                    .foregroundColor(color)
+                
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+            }
             
-            Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+            // Value and unit aligned leading
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.title2)
+                    .fontDesign(.monospaced) // Monospaced font for values
+                    .foregroundColor(.primary)
+                
+                Text(unit)
+                    .font(.caption)
+                    .foregroundColor(.secondary) // Grayed out unit
+                
+                Spacer() // Push to leading
+            }
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(Color.clear) // No background color
+        .overlay(
+            RoundedRectangle(cornerRadius: 20) // Increased corner radius
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1.5) // Increased stroke thickness from 1 to 1.5
+        )
     }
 }
 

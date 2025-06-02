@@ -23,7 +23,7 @@ struct ShoeGridView: View {
     
     let healthKitViewModel: HealthKitViewModel?
     
-    @State private var showStepsInHeader = false
+    @State private var showStepsInHeader = false // false = show distance, true = show steps
     @State private var yearToDateSteps = 0
     @State private var yearToDateDistance = 0.0
    
@@ -53,6 +53,7 @@ struct ShoeGridView: View {
                                 .foregroundStyle(.yellow)
                             Text("\(activeShoes.count)")
                                 .fontWeight(.semibold)
+                                .fontDesign(.monospaced)
                         }
                         Text("Footwears")
                             .font(.caption)
@@ -61,26 +62,21 @@ struct ShoeGridView: View {
                     Spacer()
                     Divider()
                     VStack(alignment: .leading){
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                showStepsInHeader.toggle()
-                            }
-                        }) {
-                            HStack{
-                                Image(systemName: showStepsInHeader ? "figure.walk" : "shoeprints.fill")
-                                    .foregroundStyle(.green)
-                                if showStepsInHeader {
-                                    Text(yearToDateSteps.formattedCompactSteps)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.primary)
-                                } else {
-                                    Text(yearToDateDistance.formattedDistance)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.primary)
-                                }
+                        HStack{
+                            Image(systemName: showStepsInHeader ? "shoeprints.fill" : "figure.walk")
+                                .foregroundStyle(showStepsInHeader ? .green : .blue)
+                            if showStepsInHeader {
+                                Text(yearToDateSteps.formattedCompactSteps)
+                                    .fontWeight(.semibold)
+                                    .fontDesign(.monospaced)
+                                    .foregroundColor(.primary)
+                            } else {
+                                Text(yearToDateDistance.formattedDistance)
+                                    .fontWeight(.semibold)
+                                    .fontDesign(.monospaced)
+                                    .foregroundColor(.primary)
                             }
                         }
-                        .buttonStyle(PlainButtonStyle())
                         
                         Text(showStepsInHeader ? "Steps this year" : "Kilometers this year")
                             .font(.caption)
@@ -94,6 +90,7 @@ struct ShoeGridView: View {
                                 .foregroundStyle(.purple)
                             Text("\(totalRepairs)")
                                 .fontWeight(.semibold)
+                                .fontDesign(.monospaced)
                         }
                         Text("Repairs")
                             .font(.caption)

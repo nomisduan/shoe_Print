@@ -51,11 +51,13 @@ struct MiniShoeCardView: View {
                             .font(.title3)
                             .fontWeight(.black)
                             .italic()
+                            .lineLimit(1) // Same as ShoeCardView
                         Text(shoe.model)
                             .font(.body)
+                            .lineLimit(1) // Prevent model from touching bottom
                     }
                 }
-                .padding(12) // Interior spacing
+                .padding(EdgeInsets(top: 12, leading: 12, bottom: 16, trailing: 12)) // Extra bottom padding
                 .frame(maxWidth: .infinity, alignment: .leading) // Left aligned in ZStack
             }
         }

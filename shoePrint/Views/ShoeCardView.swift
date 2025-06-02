@@ -80,6 +80,7 @@ struct ShoeCardView: View {
                         .font(.title3)
                         .fontWeight(.black)
                         .italic()
+                        .lineLimit(1)
                     Text(shoe.model)
                         
                     HStack(alignment: .lastTextBaseline, spacing: 2) {

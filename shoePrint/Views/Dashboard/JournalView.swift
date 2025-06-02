@@ -1,5 +1,5 @@
 //
-//  HealthDashboardView.swift
+//  JournalView.swift
 //  shoePrint
 //
 //  Created by Simon Naud on 11/04/2025.
@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 /// Visual journal for hourly step attribution to shoes
-struct HealthDashboardView: View {
+struct JournalView: View {
     
     // MARK: - Properties
     
@@ -19,19 +19,32 @@ struct HealthDashboardView: View {
     @State private var shoeSessionService: ShoeSessionService?
     
     @State private var selectedDate = Date()
+    @State private var currentWeekOffset = 0 // For week navigation
     @State private var showingDatePicker = false
     @State private var hourlySteps: [HourlyStepData] = []
     @State private var selectedHours: Set<UUID> = []
     @State private var isSelectionMode = false
     @State private var showingBatchAttributionSheet = false
+    @State private var displayedMonth = Date() // Track the currently displayed month for header
     
     // MARK: - Body
     
     var body: some View {
         contentView
-            .navigationTitle("Journal")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Custom title
+                ToolbarItem(placement: .principal) {
+                    HStack {
+                        Text("JOURNAL")
+                            .font(.largeTitle)
+                            .fontWeight(.black)
+                            .italic()
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarLeading) {
                     if isSelectionMode {
                         Button {
@@ -123,7 +136,7 @@ struct HealthDashboardView: View {
 
 // MARK: - Content Views
 
-private extension HealthDashboardView {
+private extension JournalView {
     
     @ViewBuilder
     var contentView: some View {
@@ -137,14 +150,33 @@ private extension HealthDashboardView {
     }
     
     var dateSelector: some View {
-        VStack(spacing: 16) {
-            // Date header
+        VStack(spacing: 16) { // Increased from 6 to 16 for more breathing room
+            // Month header with Today button and calendar button
             HStack {
-                Text(selectedDate, style: .date)
+                Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
                     .font(.title2)
                     .fontWeight(.semibold)
                 
                 Spacer()
+                
+                // Today button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        selectedDate = Date()
+                        currentWeekOffset = 0
+                        displayedMonth = Date()
+                    }
+                    Task { await loadHourlyData() }
+                } label: {
+                    Text("Today")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Capsule())
+                }
                 
                 Button {
                     showingDatePicker = true
@@ -154,55 +186,149 @@ private extension HealthDashboardView {
                         .foregroundColor(.blue)
                 }
             }
+            .padding(.horizontal)
             
-            // Daily statistics
-            HStack(spacing: 16) {
-                // Total distance for the day
-                VStack(spacing: 4) {
-                    Text("\(totalDailyDistance.formattedDistance) km")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundColor(.blue)
-                    Text(NSLocalizedString("Distance Today", comment: "Daily distance label"))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(12)
+            // Week selector with infinite scroll
+            infiniteWeekSelector
+            
+            // Daily statistics with StatCard design from ShoeDetailView
+            HStack(spacing: 12) {
+                StatCard(
+                    title: NSLocalizedString("Distance Today", comment: "Daily distance label"),
+                    value: totalDailyDistance.formattedDistance,
+                    unit: "km",
+                    icon: "figure.walk",
+                    color: .blue
+                )
                 
-                // Total steps for the day
-                VStack(spacing: 4) {
-                    Text(totalDailySteps.formattedSteps)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundColor(.green)
-                    Text(NSLocalizedString("Steps Today", comment: "Daily steps label"))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(12)
+                StatCard(
+                    title: NSLocalizedString("Steps Today", comment: "Daily steps label"),
+                    value: totalDailySteps.formattedSteps,
+                    unit: "steps",
+                    icon: "shoeprints.fill",
+                    color: .green
+                )
             }
+            .padding(.horizontal)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
+        .padding(.vertical, 16) // Increased from 6 to 16 for more breathing room
         .sheet(isPresented: $showingDatePicker) {
             DatePickerSheet(selectedDate: $selectedDate) {
                 Task { await loadHourlyData() }
+                // Update displayed month and week offset based on selected date
+                let calendar = Calendar.current
+                let weekDifference = calendar.dateInterval(of: .weekOfYear, for: selectedDate)!.start.timeIntervalSince(calendar.dateInterval(of: .weekOfYear, for: Date())!.start) / (7 * 24 * 60 * 60)
+                currentWeekOffset = Int(weekDifference)
+                displayedMonth = selectedDate
             }
         }
     }
     
+    var infiniteWeekSelector: some View {
+        let calendar = Calendar.current
+        let screenWidth = UIScreen.main.bounds.width
+        
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    // Generate weeks more simply for better performance
+                    ForEach(-5...5, id: \.self) { weekOffset in
+                        let weekDate = calendar.date(byAdding: .weekOfYear, value: currentWeekOffset + weekOffset, to: Date()) ?? Date()
+                        let currentWeek = calendar.dateInterval(of: .weekOfYear, for: weekDate) ?? DateInterval(start: Date(), end: Date())
+                        
+                        HStack(spacing: 0) {
+                            ForEach(0..<7, id: \.self) { dayOffset in
+                                let date = calendar.date(byAdding: .day, value: dayOffset, to: currentWeek.start) ?? Date()
+                                let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                                let isToday = calendar.isDateInToday(date)
+                                let isFuture = date > Date()
+                                let isClickable = !isFuture
+                                
+                                VStack(spacing: 6) {
+                                    // Day name - single letter abbreviation
+                                    Text(singleLetterDayName(for: date))
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(isClickable ? .secondary : .secondary.opacity(0.5))
+                                    
+                                    // Day number
+                                    Text(date.formatted(.dateTime.day()))
+                                        .font(.headline)
+                                        .fontWeight(isSelected ? .bold : .medium)
+                                        .foregroundColor(
+                                            isSelected ? .white : 
+                                            (isToday ? .blue : // Today number in blue
+                                             (isClickable ? .primary : .primary.opacity(0.5)))
+                                        )
+                                        .frame(width: 32, height: 32)
+                                        .background(
+                                            Circle()
+                                                .fill(isSelected ? Color.black : Color.clear)
+                                        )
+                                }
+                                .frame(width: screenWidth / 7)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if isClickable {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            selectedDate = date
+                                            displayedMonth = date
+                                        }
+                                        Task { await loadHourlyData() }
+                                    }
+                                }
+                            }
+                        }
+                        .id("week-\(currentWeekOffset + weekOffset)")
+                    }
+                }
+                .onAppear {
+                    proxy.scrollTo("week-0", anchor: .center)
+                }
+            }
+            .scrollTargetBehavior(.paging)
+            .gesture(
+                DragGesture()
+                    .onEnded { value in
+                        let screenWidth = UIScreen.main.bounds.width
+                        let threshold: CGFloat = screenWidth / 4
+                        
+                        if value.translation.width > threshold {
+                            // Swipe right - go to previous week
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentWeekOffset -= 1
+                                displayedMonth = calendar.date(byAdding: .weekOfYear, value: currentWeekOffset, to: Date()) ?? Date()
+                            }
+                        } else if value.translation.width < -threshold {
+                            // Swipe left - go to next week
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentWeekOffset += 1
+                                displayedMonth = calendar.date(byAdding: .weekOfYear, value: currentWeekOffset, to: Date()) ?? Date()
+                            }
+                        }
+                    }
+            )
+            .onChange(of: currentWeekOffset) { _, _ in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo("week-0", anchor: .center)
+                }
+            }
+        }
+    }
+    
+    // Helper function to get single letter day abbreviation
+    private func singleLetterDayName(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEEE" // Single letter weekday
+        return formatter.string(from: date)
+    }
+    
     var hourlyStepsJournal: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) { // Increased from 2 to 12 for more breathing room
             // Date selector header with statistics
             dateSelector
             
-            // Fixed height horizontal scrolling journal
+            // Fixed height horizontal scrolling journal with bars aligned at bottom
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(Array(hourlySteps.enumerated()), id: \.element.id) { index, hourData in
@@ -221,10 +347,10 @@ private extension HealthDashboardView {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.top, 20)
-                .padding(.bottom, 10) // Space for hour labels
+                .padding(.top, 16) // Increased from 4 to 16 for more breathing room
+                .padding(.bottom, 8)
             }
-            .frame(height: 350) // Increased height to show all elements
+            .frame(height: 320)
             
             Spacer()
         }
@@ -250,7 +376,7 @@ private extension HealthDashboardView {
 
 // MARK: - Actions
 
-private extension HealthDashboardView {
+private extension JournalView {
     
     func loadHourlyData() async {
         // Get raw HealthKit data
@@ -263,7 +389,7 @@ private extension HealthDashboardView {
             print("🔍 DEBUG: After session enrichment: \(hourlySteps.count) data points")
             
             // Debug: Print attribution status for each hour
-            for (index, hourData) in hourlySteps.enumerated() {
+            for hourData in hourlySteps.prefix(3) {
                 if let shoe = hourData.assignedShoe {
                     print("🔍 DEBUG: Hour \(hourData.timeString) attributed to \(shoe.brand) \(shoe.model)")
                 } else {
@@ -367,13 +493,13 @@ struct HourlyStepColumnView: View {
     
     private var barHeight: CGFloat {
         let ratio = CGFloat(hourData.steps) / CGFloat(max(maxSteps, 1))
-        let maxHeight: CGFloat = 200
-        let minHeight: CGFloat = 20
+        let maxHeight: CGFloat = 180 // Reduced max height
+        let minHeight: CGFloat = 8 // Minimum visible height
         return max(minHeight, maxHeight * ratio)
     }
     
     private var barWidth: CGFloat {
-        45 // Reduced from 60 to 45
+        40 // Consistent width
     }
     
     private var barColor: Color {
@@ -395,80 +521,88 @@ struct HourlyStepColumnView: View {
     }
     
     private var formattedDistance: String {
-        // Use real distance data from HealthKit
         return hourData.distanceFormatted
     }
     
     // Minimum height required to show the emoji
     private var shouldShowEmoji: Bool {
-        barHeight >= 40
+        barHeight >= 30
     }
     
     var body: some View {
-        VStack(spacing: 8) {
-            // Selection checkbox (top when in selection mode)
+        VStack(spacing: 6) {
+            // Fixed container for bars - ensures bottom alignment
+            VStack(spacing: 0) {
+                // Distance display (moved closer to bars, above them)
+                VStack(spacing: 2) {
+                    Text(formattedDistance)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.primary)
+                    Text("km")
+                        .font(.system(size: 9, weight: .regular))
+                        .foregroundColor(.secondary)
+                }
+                .frame(height: 28) // Fixed height for distance info
+                .opacity(hourData.steps > 0 ? 1.0 : 0.3) // Dim when no data
+                
+                // Bar container with bottom alignment
+                VStack {
+                    Spacer() // This pushes the bar to the bottom
+                    
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(barColor)
+                        .stroke(strokeColor, lineWidth: isSelected ? 2.5 : (hourData.assignedShoe == nil ? 1.0 : 0))
+                        .frame(width: barWidth, height: barHeight)
+                        .overlay(
+                            // Shoe emoji at the bottom of the bar
+                            VStack {
+                                Spacer()
+                                if shouldShowEmoji, let shoe = hourData.assignedShoe {
+                                    Text(shoe.icon)
+                                        .font(.system(size: 14))
+                                        .padding(.bottom, 4)
+                                }
+                            }
+                        )
+                        .animation(.easeInOut(duration: 0.2), value: barHeight)
+                        .animation(.easeInOut(duration: 0.2), value: barColor)
+                        .animation(.easeInOut(duration: 0.2), value: isSelected)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSelectionMode {
+                                onTap()
+                            } else {
+                                onAttributionTap()
+                            }
+                        }
+                }
+                .frame(height: 180) // Fixed height for bar area - ensures alignment
+            }
+            
+            // Hour label (below bars)
+            Text(hourData.timeString)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary)
+                .frame(height: 16) // Fixed height for hour label
+            
+            // Selection checkbox (moved to bottom when in selection mode)
             if isSelectionMode {
                 Button {
                     onTap()
                 } label: {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
+                        .font(.system(size: 18))
                         .foregroundColor(isSelected ? .blue : .gray)
                 }
                 .buttonStyle(PlainButtonStyle())
-            }
-            
-            // Distance display (above bar)
-            if !isSelectionMode {
-                VStack(spacing: 2) {
-                    Text(formattedDistance)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(.primary)
-                    Text("km")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            // Step bar column
-            VStack {
+                .frame(height: 24) // Fixed height for checkbox area
+            } else {
+                // Fixed space when not in selection mode to maintain consistent spacing
                 Spacer()
-                
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(barColor)
-                    .stroke(strokeColor, lineWidth: isSelected ? 3 : (hourData.assignedShoe == nil ? 1.5 : 0))
-                    .frame(width: barWidth, height: barHeight)
-                    .overlay(
-                        // Shoe emoji at the bottom of the bar (only if bar is tall enough)
-                        VStack {
-                            Spacer()
-                            if shouldShowEmoji, let shoe = hourData.assignedShoe {
-                                Text(shoe.icon)
-                                    .font(.title3)
-                                    .padding(.bottom, 6)
-                            }
-                        }
-                    )
-                    .animation(.easeInOut(duration: 0.2), value: barHeight)
-                    .animation(.easeInOut(duration: 0.2), value: barColor)
-                    .animation(.easeInOut(duration: 0.2), value: isSelected)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if isSelectionMode {
-                            onTap()
-                        } else {
-                            onAttributionTap()
-                        }
-                    }
+                    .frame(height: 24)
             }
-            .frame(height: 200) // Reduced from 220 to 200 for better balance
-            
-            // Hour label (below bar)
-            Text(hourData.timeString)
-                .font(.system(.caption, design: .monospaced))
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
         }
+        .frame(width: 50) // Fixed total width for each column
     }
 }
 
@@ -767,6 +901,6 @@ struct ActiveShoeLabel: View {
         healthKitManager: HealthKitManager()
     )
     
-    HealthDashboardView(healthKitViewModel: viewModel)
+    JournalView(healthKitViewModel: viewModel)
         .modelContainer(PreviewContainer.previewModelContainer)
 } 
