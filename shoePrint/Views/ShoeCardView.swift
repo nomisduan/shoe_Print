@@ -31,17 +31,13 @@ struct ShoeCardView: View {
         let distanceInMeters = shoe.totalDistance * 1000 // shoe.totalDistance is in km
         let measurement = Measurement(value: distanceInMeters, unit: UnitLength.meters)
         
-        let formatter = MeasurementFormatter()
-        formatter.unitStyle = .short
-        formatter.numberFormatter.maximumFractionDigits = 0
-        
         // Convert to appropriate unit based on locale settings
         if distanceUnit == "mi" {
             let milesValue = measurement.converted(to: .miles).value
-            return String(format: "%.0f", milesValue)
+            return milesValue.formattedDistance
         } else {
             let kmValue = measurement.converted(to: .kilometers).value
-            return String(format: "%.0f", kmValue)
+            return kmValue.formattedDistance
         }
     }
     

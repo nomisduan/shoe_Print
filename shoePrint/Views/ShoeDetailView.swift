@@ -23,42 +23,22 @@ struct ShoeDetailView: View {
         return formatted.contains("mi") ? "mi" : "km"
     }
     
-    private func formatDistance(_ distanceInKm: Double) -> String {
-        let distanceInMeters = distanceInKm * 1000
-        let measurement = Measurement(value: distanceInMeters, unit: UnitLength.meters)
-        
+    private func formatDistance(_ distanceKm: Double) -> String {
         let formatter = MeasurementFormatter()
-        formatter.unitStyle = .short
-        formatter.numberFormatter.maximumFractionDigits = 1
+        let testMeasurement = Measurement(value: 1000, unit: UnitLength.meters)
+        let testFormatted = formatter.string(from: testMeasurement)
+        let preferredUnit = testFormatted.contains("mi") ? "mi" : "km"
         
-        if distanceUnit == "mi" {
-            let milesValue = measurement.converted(to: .miles).value
-            return String(format: "%.1f mi", milesValue)
+        if preferredUnit == "mi" {
+            let miles = distanceKm * 0.621371
+            return "\(miles.formattedDistance) mi"
         } else {
-            // Format with thousands separator
-            let numberFormatter = NumberFormatter()
-            numberFormatter.numberStyle = .decimal
-            numberFormatter.groupingSeparator = " "
-            numberFormatter.maximumFractionDigits = 0
-            
-            if let formattedNumber = numberFormatter.string(from: NSNumber(value: distanceInKm)) {
-                return "\(formattedNumber) km"
-            } else {
-                return String(format: "%.0f km", distanceInKm)
-            }
+            return "\(distanceKm.formattedDistance) km"
         }
     }
     
     private func formatSteps(_ steps: Int) -> String {
-        let numberFormatter = NumberFormatter()
-        numberFormatter.numberStyle = .decimal
-        numberFormatter.groupingSeparator = " "
-        
-        if let formattedNumber = numberFormatter.string(from: NSNumber(value: steps)) {
-            return formattedNumber
-        } else {
-            return "\(steps)"
-        }
+        return steps.formattedSteps
     }
     
     private func formatWearTime(_ totalHours: Double) -> String {
@@ -311,6 +291,8 @@ struct ShoeDetailView: View {
                             .background(Color.red.opacity(0.1))
                             .cornerRadius(12)
                         }
+                        .disabled(shoe.brand.lowercased() == "barefoot")
+                        .opacity(shoe.brand.lowercased() == "barefoot" ? 0.5 : 1.0)
                     }
                 }
             }

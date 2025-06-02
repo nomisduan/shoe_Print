@@ -20,6 +20,8 @@ struct ShoeGridView: View {
     
     @Binding var shoeToEdit: Shoe?
     @Binding var showEditSheet: Bool
+    
+    @State private var showStepsInHeader = false
    
     let columns = [
         GridItem(.flexible(), spacing: 20),
@@ -52,6 +54,27 @@ struct ShoeGridView: View {
         }
     }
     
+    private var totalStepsThisYear: Int {
+        let calendar = Calendar.current
+        let currentYear = calendar.component(.year, from: Date())
+        let startOfYear = calendar.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? Date()
+        let endOfYear = calendar.date(from: DateComponents(year: currentYear + 1, month: 1, day: 1)) ?? Date()
+        
+        return shoes.reduce(0) { total, shoe in
+            // Calculate steps from sessions in this year for ALL shoes (including archived)
+            let yearSessions = shoe.sessions.filter { session in
+                session.startDate >= startOfYear && session.startDate < endOfYear
+            }
+            
+            // Use real stored steps data from sessions
+            let yearlySteps = yearSessions.reduce(0) { sessionTotal, session in
+                return sessionTotal + session.steps
+            }
+            
+            return total + yearlySteps
+        }
+    }
+    
     private var totalRepairs: Int {
         return activeShoes.reduce(0) { total, shoe in
             total + shoe.entries.filter { $0.repair }.count
@@ -76,13 +99,28 @@ struct ShoeGridView: View {
                     Spacer()
                     Divider()
                     VStack(alignment: .leading){
-                        HStack{
-                            Image(systemName: "shoeprints.fill")
-                                .foregroundStyle(.green)
-                            Text(String(format: "%.1f", totalKilometersThisYear))
-                                .fontWeight(.semibold)
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showStepsInHeader.toggle()
+                            }
+                        }) {
+                            HStack{
+                                Image(systemName: showStepsInHeader ? "figure.walk" : "shoeprints.fill")
+                                    .foregroundStyle(.green)
+                                if showStepsInHeader {
+                                    Text(totalStepsThisYear.formattedCompactSteps)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                } else {
+                                    Text(totalKilometersThisYear.formattedDistance)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                }
+                            }
                         }
-                        Text("Kilometers this year")
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        Text(showStepsInHeader ? "Steps this year" : "Kilometers this year")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

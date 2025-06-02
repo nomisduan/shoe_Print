@@ -17,27 +17,27 @@ struct ShoeListView: View {
     }
     
     var body: some View {
-        ScrollView {
-            if archivedShoes.isEmpty {
-                // Empty state
-                VStack(spacing: 20) {
-                    Image(systemName: "archivebox")
-                        .font(.system(size: 60))
-                        .foregroundColor(.gray)
-                    
-                    Text("No Archived Shoes")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("Shoes you archive will appear here")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 100) // Space from top instead of centering
-            } else {
-                // Archived shoes list
+        if archivedShoes.isEmpty {
+            // Empty state - centered in screen
+            VStack(spacing: 20) {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 60))
+                    .foregroundColor(.gray)
+                
+                Text("No Archived Shoes")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Shoes you archive will appear here")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(UIColor.systemGroupedBackground))
+        } else {
+            // Archived shoes list
+            ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(archivedShoes) { shoe in
                         ShoeRowView(
@@ -55,9 +55,9 @@ struct ShoeListView: View {
                 }
                 .padding(.top, 10) // Consistent top spacing
             }
+            .padding(.horizontal) // Same horizontal padding as other screens
+            .background(Color(UIColor.systemGroupedBackground))
         }
-        .padding(.horizontal) // Same horizontal padding as other screens
-        .background(Color(UIColor.systemGroupedBackground))
     }
 }
 

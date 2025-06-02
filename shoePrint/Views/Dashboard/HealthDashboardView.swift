@@ -159,7 +159,7 @@ private extension HealthDashboardView {
             HStack(spacing: 16) {
                 // Total distance for the day
                 VStack(spacing: 4) {
-                    Text(String(format: "%.1f km", totalDailyDistance))
+                    Text("\(totalDailyDistance.formattedDistance) km")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.blue)
@@ -174,7 +174,7 @@ private extension HealthDashboardView {
                 
                 // Total steps for the day
                 VStack(spacing: 4) {
-                    Text("\(totalDailySteps)")
+                    Text(totalDailySteps.formattedSteps)
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.green)
@@ -586,6 +586,8 @@ struct HealthPermissionView: View {
     
     var body: some View {
         VStack(spacing: 20) {
+            Spacer()
+            
             Image(systemName: "heart.text.square")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
@@ -634,7 +636,10 @@ struct HealthPermissionView: View {
                 .foregroundColor(.orange)
                 .font(.caption)
             }
+            
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
 }
@@ -643,6 +648,8 @@ struct HealthPermissionView: View {
 struct EmptyDataView: View {
     var body: some View {
         VStack(spacing: 20) {
+            Spacer()
+            
             Image(systemName: "figure.walk")
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
@@ -655,7 +662,10 @@ struct EmptyDataView: View {
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+            
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
 }
