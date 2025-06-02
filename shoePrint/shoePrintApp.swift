@@ -11,13 +11,17 @@ import SwiftData
 @main
 struct shoePrintApp: App {
     @StateObject private var healthKitManager = HealthKitManager()
+    @StateObject private var diContainer = DIContainer.shared
     
     let modelContainer: ModelContainer
     
     init() {
         // Handle potential migration issues gracefully
         do {
-            modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self)
+            modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self, HourAttribution.self)
+            
+            // Configure dependency injection
+            configureServices(modelContext: modelContainer.mainContext)
             
             // Add default Barefoot shoe for new users
             let context = modelContainer.mainContext
@@ -32,7 +36,10 @@ struct shoePrintApp: App {
             // Clean up old data files and recreate container
             // This is acceptable for a development/portfolio project
             do {
-                modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self)
+                modelContainer = try ModelContainer(for: Shoe.self, StepEntry.self, ShoeSession.self, HourAttribution.self)
+                
+                // Configure dependency injection for fallback
+                configureServices(modelContext: modelContainer.mainContext)
                 
                 // Add default Barefoot shoe for new users
                 let context = modelContainer.mainContext
@@ -90,7 +97,17 @@ struct shoePrintApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(healthKitManager)
+                .environmentObject(diContainer)
                 .modelContainer(modelContainer)
         }
+    }
+    
+    // MARK: - Service Configuration
+    
+    /// Configures all app services in the dependency injection container
+    @MainActor
+    private func configureServices(modelContext: ModelContext) {
+        diContainer.configureServices(modelContext: modelContext, healthKitManager: healthKitManager)
+        print("✅ Dependency injection container configured")
     }
 }

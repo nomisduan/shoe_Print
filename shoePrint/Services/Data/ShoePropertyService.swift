@@ -8,8 +8,8 @@
 import Foundation
 import SwiftData
 
-/// Centralized service for managing shoe computed properties
-/// ✅ Provides SwiftData-safe methods for property updates
+/// Centralized service for managing shoe data operations
+/// ✅ With proper computed properties, this service is mainly for data validation and batch operations
 @MainActor
 final class ShoePropertyService {
     
@@ -21,43 +21,20 @@ final class ShoePropertyService {
     
     // MARK: - Batch Operations
     
-    /// Refreshes computed properties for multiple shoes efficiently
+    /// Forces SwiftData to refresh relationships for multiple shoes
+    /// ✅ With proper computed properties, this mainly ensures relationship loading
     func refreshMultipleShoes(_ shoes: [Shoe]) async {
-        print("🔄 Batch refreshing \(shoes.count) shoes...")
+        print("🔄 Refreshing \(shoes.count) shoes (computed properties are now reactive)...")
         
-        // Batch fetch all sessions to minimize database queries
-        // Note: SwiftData predicates don't support contains() with arrays, so we'll fetch all sessions
-        let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
-        
-        do {
-            let allSessions = try modelContext.fetch(allSessionsDescriptor)
-            
-            // Filter and group sessions by the shoes we're updating
-            let shoeIDs = Set(shoes.map { $0.persistentModelID })
-            let relevantSessions = allSessions.filter { session in
-                guard let shoeID = session.shoe?.persistentModelID else { return false }
-                return shoeIDs.contains(shoeID)
-            }
-            
-            // Group sessions by shoe for efficient processing
-            let sessionsByShoe = Dictionary(grouping: relevantSessions) { session in
-                session.shoe?.persistentModelID
-            }
-            
-            // Update each shoe with its sessions
-            for shoe in shoes {
-                let shoeSessions = sessionsByShoe[shoe.persistentModelID] ?? []
-                await refreshShoeWithSessions(shoe, sessions: shoeSessions)
-            }
-            
-            print("✅ Batch refresh completed for \(shoes.count) shoes")
-        } catch {
-            print("❌ Error in batch refresh: \(error)")
-            // Fallback to individual refresh
-            for shoe in shoes {
-                await shoe.refreshComputedProperties(using: modelContext)
-            }
+        // Force relationship refresh by accessing them
+        for shoe in shoes {
+            // Accessing computed properties forces relationship loading in SwiftData
+            let _ = shoe.isActive
+            let _ = shoe.totalDistance
+            let _ = shoe.totalSteps
         }
+        
+        print("✅ Relationship refresh completed for \(shoes.count) shoes")
     }
     
     /// Refreshes all shoes in the database
@@ -74,45 +51,23 @@ final class ShoePropertyService {
     
     // MARK: - Individual Operations
     
-    /// Refreshes a single shoe with pre-fetched sessions (for efficiency)
-    private func refreshShoeWithSessions(_ shoe: Shoe, sessions: [ShoeSession]) async {
-        let activeSessions = sessions.filter { $0.endDate == nil }
-        // ✅ Use fallback pattern to avoid double-counting
-        let sessionDistance = sessions.reduce(0) { $0 + $1.distance }
-        let newDistance: Double
-        if !sessions.isEmpty {
-            newDistance = sessionDistance
-        } else {
-            newDistance = shoe.entries.reduce(0) { $0 + $1.distance }
-        }
-        
-        // Update computed properties
-        let wasActive = shoe.isActive
-        let oldDistance = shoe.totalDistance
-        
-        shoe.isActive = !activeSessions.isEmpty
-        shoe.activatedAt = activeSessions.first?.startDate
-        shoe.totalDistance = newDistance
-        shoe.lifespanProgress = min(shoe.totalDistance / max(shoe.estimatedLifespan, 1.0), 1.0)
-        
-        if wasActive != shoe.isActive || abs(oldDistance - shoe.totalDistance) > 0.01 {
-            print("🔄 Updated \(shoe.brand) \(shoe.model): active \(wasActive)→\(shoe.isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", shoe.totalDistance)) km")
-        }
-    }
     
     // MARK: - Session-Triggered Updates
     
-    /// Updates shoes affected by session changes
+    /// Forces relationship refresh for shoes affected by session changes
     func updateShoesAfterSessionChange(affectedShoes: [Shoe]) async {
         guard !affectedShoes.isEmpty else { return }
         
-        print("🔄 Updating \(affectedShoes.count) shoes after session change...")
+        print("🔄 Triggering computed property updates for \(affectedShoes.count) shoes...")
         await refreshMultipleShoes(affectedShoes)
     }
     
-    /// Updates a single shoe after its session changes
+    /// Forces relationship refresh for a single shoe after session changes
     func updateShoeAfterSessionChange(_ shoe: Shoe) async {
-        await shoe.refreshComputedProperties(using: modelContext)
+        // Force computed property access to trigger relationship loading
+        let _ = shoe.isActive
+        let _ = shoe.totalDistance
+        print("🔄 Triggered computed property update for \(shoe.brand) \(shoe.model)")
     }
     
     // MARK: - Validation & Diagnostics

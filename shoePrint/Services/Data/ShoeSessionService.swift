@@ -62,11 +62,8 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Explicit refresh using database queries (SwiftData-safe)
-            await shoe.refreshComputedProperties(using: modelContext)
-            
-            // Update all shoes that had sessions closed
-            await updateAllShoesComputedProperties()
+            // ✅ Computed properties now update automatically
+            print("✅ Session started - computed properties will update automatically")
             
             print("🚀 Started session for \(shoe.brand) \(shoe.model)" + (autoStarted ? " (auto-started)" : ""))
         } catch {
@@ -95,8 +92,8 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Explicit refresh using database queries (SwiftData-safe)
-            await shoe.refreshComputedProperties(using: modelContext)
+            // ✅ Computed properties now update automatically when session ends
+            print("✅ Session ended - computed properties will update automatically")
             
             print("🛑 Stopped session for \(shoe.brand) \(shoe.model) - Duration: \(activeSession.durationFormatted)")
         } catch {
@@ -130,32 +127,14 @@ final class ShoeSessionService: ObservableObject {
             do {
                 try modelContext.save()
                 
-                // ✅ Refresh all affected shoes after save
-                for session in activeSessions {
-                    if let shoe = session.shoe {
-                        await shoe.refreshComputedProperties(using: modelContext)
-                    }
-                }
+                // ✅ Computed properties update automatically when sessions are closed
+                print("✅ Sessions closed - computed properties will update automatically")
             } catch {
                 print("❌ Failed to save session closures: \(error)")
             }
         }
     }
     
-    /// Updates computed properties for all shoes using database queries
-    /// ✅ SwiftData-safe approach
-    private func updateAllShoesComputedProperties() async {
-        let descriptor = FetchDescriptor<Shoe>()
-        
-        do {
-            let allShoes = try modelContext.fetch(descriptor)
-            for shoe in allShoes {
-                await shoe.refreshComputedProperties(using: modelContext)
-            }
-        } catch {
-            print("❌ Error updating shoes computed properties: \(error)")
-        }
-    }
     
     // MARK: - Auto-Management
     
@@ -181,12 +160,8 @@ final class ShoeSessionService: ObservableObject {
         do {
             try modelContext.save()
             
-            // ✅ Refresh affected shoes after auto-close
-            for session in activeSessions {
-                if let shoe = session.shoe, session.endDate != nil {
-                    await shoe.refreshComputedProperties(using: modelContext)
-                }
-            }
+            // ✅ Computed properties update automatically when sessions are auto-closed
+            print("✅ Auto-closed sessions - computed properties will update automatically")
         } catch {
             print("❌ Failed to save auto-closed sessions: \(error)")
         }
@@ -321,101 +296,14 @@ final class ShoeSessionService: ObservableObject {
         }
     }
     
-    // MARK: - A Posteriori Attribution
+    // MARK: - Deprecated Hour Attribution Methods
     
-    /// Creates a session for a specific hour (for a posteriori attribution from journal)
-    /// - Parameters:
-    ///   - shoe: The shoe to attribute the hour to
-    ///   - hourDate: The specific hour to create session for
-    /// - Returns: The created session
+    /// Deprecated: Use AttributionService.attributeHour instead
+    @available(*, deprecated, message: "Use AttributionService.attributeHour instead")
     @discardableResult
     func createHourSession(for shoe: Shoe, hourDate: Date) async -> ShoeSession {
-        guard !shoe.archived else {
-            print("⚠️ Cannot create session for archived shoe: \(shoe.brand) \(shoe.model)")
-            return ShoeSession()
-        }
-        
-        let calendar = Calendar.current
-        let hourStart = calendar.date(bySettingHour: calendar.component(.hour, from: hourDate), minute: 0, second: 0, of: hourDate) ?? hourDate
-        let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart) ?? hourStart
-        
-        // Calculate real HealthKit data for this hour
-        let healthKitData = await calculateHealthKitData(from: hourStart, to: hourEnd)
-        
-        print("🕐 Creating hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute()))")
-        
-        // ✅ Check for existing sessions and get affected shoes SAFELY
-        let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
-        print("🔍 Found \(affectedShoes.count) shoes with conflicting sessions")
-        
-        // ✅ Remove conflicting sessions with error handling and wait for completion
-        await removeConflictingSessions(for: hourStart, to: hourEnd)
-        
-        // ✅ Force a longer delay after deletion to ensure SwiftData cleanup
-        do {
-            try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-        } catch {
-            print("❌ Sleep interrupted: \(error.localizedDescription)")
-        }
-        
-        // Create new session for this specific hour with real data
-        let session = ShoeSession(
-            startDate: hourStart,
-            endDate: hourEnd,
-            autoStarted: false,
-            shoe: shoe,
-            steps: healthKitData.steps,
-            distance: healthKitData.distance
-        )
-        
-        modelContext.insert(session)
-        
-        do {
-            // ✅ Save first, then refresh properties
-            try modelContext.save()
-            print("✅ Session saved successfully")
-            
-            // ✅ Extended delay before refresh to ensure SwiftData consistency
-            do {
-                try await Task.sleep(nanoseconds: 300_000_000) // 300ms
-            } catch {
-                print("❌ Sleep interrupted: \(error.localizedDescription)")
-            }
-            
-            // ✅ Use batch property service to avoid individual refresh issues
-            var allAffectedShoes = affectedShoes
-            if !allAffectedShoes.contains(where: { $0.persistentModelID == shoe.persistentModelID }) {
-                allAffectedShoes.append(shoe)
-            }
-            
-            if !allAffectedShoes.isEmpty {
-                print("🔄 Refreshing properties for \(allAffectedShoes.count) affected shoes")
-                
-                // ✅ Skip refresh if only target shoe to avoid complexity
-                if allAffectedShoes.count == 1 && allAffectedShoes.first?.persistentModelID == shoe.persistentModelID {
-                    print("✅ Skipping refresh for single target shoe to avoid SwiftData issues")
-                } else {
-                    // ✅ Wrap property refresh in error handling to prevent attribution flow crashes
-                    await shoePropertyService.refreshMultipleShoes(allAffectedShoes)
-                    print("✅ Property refresh completed successfully")
-                }
-            }
-            
-            print("🕐 Created hour session for \(shoe.brand) \(shoe.model) at \(hourStart.formatted(.dateTime.hour().minute())) - \(healthKitData.steps) steps, \(String(format: "%.1f", healthKitData.distance)) km")
-            
-        } catch {
-            print("❌ Failed to save hour session: \(error.localizedDescription)")
-            // ✅ Enhanced cleanup on failure with error isolation
-            do {
-                modelContext.delete(session)
-                try modelContext.save()
-                print("✅ Cleaned up failed session")
-            } catch {
-                print("❌ Failed to clean up session: \(error.localizedDescription)")
-            }
-        }
-        
-        return session
+        print("⚠️ createHourSession is deprecated - use AttributionService.attributeHour instead")
+        return ShoeSession()
     }
     
     /// Creates sessions for multiple hours (for batch attribution)
@@ -434,107 +322,30 @@ final class ShoeSessionService: ObservableObject {
             await createHourSession(for: shoe, hourDate: hourDate)
         }
         
-        // ✅ Only refresh the target shoe since individual sessions already handled affected shoes
+        // ✅ Computed properties update automatically for batch sessions
         await shoePropertyService.updateShoeAfterSessionChange(shoe)
+        print("✅ Batch sessions created - computed properties will update automatically")
         
         print("📅 Created \(hourDates.count) hour sessions for \(shoe.brand) \(shoe.model)")
         isProcessing = false
     }
     
-    /// Gets shoes that have sessions conflicting with the given time range
-    /// - Parameters:
-    ///   - startDate: Start of the time range
-    ///   - endDate: End of the time range
-    /// - Returns: Array of shoes that will be affected
+    /// Deprecated: No longer needed with simplified attribution system
+    @available(*, deprecated, message: "No longer needed with simplified attribution system")
     private func getShoesWithConflictingSessions(for startDate: Date, to endDate: Date) async -> [Shoe] {
-        do {
-            let allSessions = try modelContext.fetch(FetchDescriptor<ShoeSession>())
-            
-            let conflictingSessions = allSessions.filter { session in
-                let startsBeforeRangeEnds = session.startDate < endDate
-                let endsAfterRangeStarts = session.endDate == nil || session.endDate! > startDate
-                return startsBeforeRangeEnds && endsAfterRangeStarts
-            }
-            
-            return conflictingSessions.compactMap { $0.shoe }
-        } catch {
-            print("❌ Error getting shoes with conflicting sessions: \(error)")
-            return []
-        }
+        return []
     }
     
-    /// Removes existing sessions that conflict with a new hour range
-    /// - Parameters:
-    ///   - startDate: Start of the new session period
-    ///   - endDate: End of the new session period
-    private func removeConflictingSessions(for startDate: Date, to endDate: Date) async {        
-        do {
-            // Fetch all sessions and filter in memory to avoid SwiftData predicate limitations
-            let allSessions = try modelContext.fetch(FetchDescriptor<ShoeSession>())
-            
-            print("🔍 Checking for conflicts in time range \(startDate.formatted(date: .omitted, time: .shortened)) - \(endDate.formatted(date: .omitted, time: .shortened))")
-            
-            // Filter sessions that overlap with our time range
-            let conflictingSessions = allSessions.filter { session in
-                // Session starts before our range ends
-                let startsBeforeRangeEnds = session.startDate < endDate
-                
-                // Session ends after our range starts (or is still active)
-                let endsAfterRangeStarts = session.endDate == nil || session.endDate! > startDate
-                
-                let overlaps = startsBeforeRangeEnds && endsAfterRangeStarts
-                
-                if overlaps {
-                    print("⚠️ Found overlapping session: \(session.shoe?.brand ?? "Unknown") from \(session.startDate.formatted(date: .omitted, time: .shortened)) to \(session.endDate?.formatted(date: .omitted, time: .shortened) ?? "Active")")
-                }
-                
-                return overlaps
-            }
-            
-            if conflictingSessions.isEmpty {
-                print("✅ No conflicting sessions found")
-            } else {
-                print("🗑️ Removing \(conflictingSessions.count) conflicting sessions")
-                for session in conflictingSessions {
-                    print("🗑️ Deleting: \(session.shoe?.brand ?? "Unknown") \(session.shoe?.model ?? "") session with \(String(format: "%.1f", session.distance)) km")
-                    modelContext.delete(session)
-                }
-                
-                // ✅ Save deletion immediately and wait for completion
-                try modelContext.save()
-                print("✅ Conflicting sessions deleted and saved")
-                
-                // ✅ Additional delay to ensure SwiftData processes deletion fully
-                do {
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                } catch {
-                    print("❌ Sleep interrupted: \(error.localizedDescription)")
-                }
-            }
-            
-        } catch {
-            print("❌ Error removing conflicting sessions: \(error)")
-        }
+    /// Deprecated: No longer needed with simplified attribution system
+    @available(*, deprecated, message: "No longer needed with simplified attribution system")
+    private func removeConflictingSessions(for startDate: Date, to endDate: Date) async {
+        // No-op - simplified attribution system doesn't need conflict resolution
     }
     
-    /// Removes attribution for a specific hour (deletes the session)
-    /// - Parameter hourDate: The hour to remove attribution from
+    /// Deprecated: Use AttributionService.removeAttribution instead
+    @available(*, deprecated, message: "Use AttributionService.removeAttribution instead")
     func removeHourAttribution(for hourDate: Date) async {
-        let calendar = Calendar.current
-        let hourStart = calendar.date(bySettingHour: calendar.component(.hour, from: hourDate), minute: 0, second: 0, of: hourDate) ?? hourDate
-        let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart) ?? hourStart
-        
-        // Get affected shoes before removing
-        let affectedShoes = await getShoesWithConflictingSessions(for: hourStart, to: hourEnd)
-        
-        await removeConflictingSessions(for: hourStart, to: hourEnd)
-        
-        // ✅ Update computed properties for affected shoes using database queries
-        for shoe in affectedShoes {
-            await shoe.refreshComputedProperties(using: modelContext)
-        }
-        
-        print("🧹 Removed attribution for hour at \(hourStart.formatted(.dateTime.hour().minute()))")
+        print("⚠️ removeHourAttribution is deprecated - use AttributionService.removeAttribution instead")
     }
     
     // MARK: - HealthKit Data Calculation

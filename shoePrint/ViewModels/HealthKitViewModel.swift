@@ -30,16 +30,14 @@ final class HealthKitViewModel: ObservableObject {
     
     /// Exposes the HealthKitManager for sharing across services
     var healthKitManager: HealthKitManager { _healthKitManager }
-    private let shoeSessionService: ShoeSessionService
-    private let modelContext: ModelContext
+    private let sessionService: SessionService
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
     
-    init(modelContext: ModelContext, healthKitManager: HealthKitManager) {
-        self.modelContext = modelContext
+    init(healthKitManager: HealthKitManager, sessionService: SessionService) {
         self._healthKitManager = healthKitManager
-        self.shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: healthKitManager)
+        self.sessionService = sessionService
         
         checkHealthKitAvailability()
         setupBindings()
@@ -98,20 +96,16 @@ final class HealthKitViewModel: ObservableObject {
         _healthKitManager.overrideAuthorizationStatus(to: true)
     }
     
-    /// Fetches hourly steps for a specific date
+    /// Fetches raw hourly steps for a specific date (no attribution)
+    /// ✅ Simplified - attribution is now handled separately by AttributionService
     func fetchHourlySteps(for date: Date) async -> [HourlyStepData] {
         if isPermissionGranted {
-            // Step 1: Check for auto-management tasks
-            await shoeSessionService.checkAndAutoCloseInactiveSessions()
-            await shoeSessionService.checkAndAutoStartDefaultShoe()
+            // Step 1: Check for auto-management tasks (real session management)
+            await sessionService.checkAndAutoCloseInactiveSessions()
+            await sessionService.checkAndAutoStartDefaultShoe()
             
-            // Step 2: Get raw HealthKit data
-            let rawHealthKitData = await fetchRawHealthKitData(for: date)
-            
-            // Step 3: Apply session-based attribution
-            let attributedData = await shoeSessionService.getHourlyStepDataForDate(date, healthKitData: rawHealthKitData)
-            
-            return attributedData
+            // Step 2: Get raw HealthKit data (no attribution)
+            return await fetchRawHealthKitData(for: date)
         } else {
             print("🔬 Generating sample hourly data for testing (HealthKit not authorized)")
             return generateSampleHourlyData(for: date)

@@ -16,7 +16,8 @@ struct JournalView: View {
     @ObservedObject var healthKitViewModel: HealthKitViewModel
     @Query private var shoes: [Shoe]
     @Environment(\.modelContext) private var modelContext
-    @State private var shoeSessionService: ShoeSessionService?
+    @EnvironmentObject private var diContainer: DIContainer
+    @State private var attributionService: AttributionService?
     
     @State private var selectedDate = Date()
     @State private var currentWeekOffset = 0 // For week navigation
@@ -119,9 +120,9 @@ struct JournalView: View {
                 }
             }
             .onAppear {
-                if shoeSessionService == nil {
-                    // ✅ Use the shared HealthKitManager from the ViewModel instead of creating a new instance
-                    shoeSessionService = ShoeSessionService(modelContext: modelContext, healthKitManager: healthKitViewModel.healthKitManager)
+                if attributionService == nil {
+                    // ✅ Get AttributionService from DI container
+                    attributionService = diContainer.resolve(AttributionService.self)
                 }
             }
             .onChange(of: selectedDate) { _, _ in
@@ -383,22 +384,22 @@ private extension JournalView {
         let rawHealthKitData = await healthKitViewModel.fetchHourlySteps(for: selectedDate)
         print("🔍 DEBUG: Loaded \(rawHealthKitData.count) raw HealthKit data points")
         
-        // Use ShoeSessionService to add session-based shoe attributions
-        if let service = shoeSessionService {
-            hourlySteps = await service.getHourlyStepDataForDate(selectedDate, healthKitData: rawHealthKitData)
-            print("🔍 DEBUG: After session enrichment: \(hourlySteps.count) data points")
+        // Use AttributionService to add shoe attributions
+        if let service = attributionService {
+            hourlySteps = await service.applyAttributions(to: rawHealthKitData, for: selectedDate)
+            print("🔍 After attribution enrichment: \(hourlySteps.count) data points")
             
             // Debug: Print attribution status for each hour
             for hourData in hourlySteps.prefix(3) {
                 if let shoe = hourData.assignedShoe {
-                    print("🔍 DEBUG: Hour \(hourData.timeString) attributed to \(shoe.brand) \(shoe.model)")
+                    print("🔍 Hour \(hourData.timeString) attributed to \(shoe.brand) \(shoe.model)")
                 } else {
-                    print("🔍 DEBUG: Hour \(hourData.timeString) not attributed")
+                    print("🔍 Hour \(hourData.timeString) not attributed")
                 }
             }
         } else {
             hourlySteps = rawHealthKitData
-            print("🔍 DEBUG: No ShoeSessionService available, using raw data")
+            print("🔍 No AttributionService available, using raw data")
         }
         
         selectedHours.removeAll()
@@ -408,15 +409,19 @@ private extension JournalView {
         let hourData = hourlySteps[index]
         
         Task {
-            guard let service = shoeSessionService else { return }
+            guard let service = attributionService else { return }
             
-            // Create a session for this specific hour
-            await service.createHourSession(for: shoe, hourDate: hourData.date)
-            
-            // Reload the data to reflect the session-based attribution
-            await loadHourlyData()
-            
-            print("✅ Attributed \(hourData.steps) steps at \(hourData.timeString) to \(shoe.brand) \(shoe.model)")
+            do {
+                // Create attribution for this specific hour
+                try await service.attributeHour(hourData.date, to: shoe)
+                
+                // Reload the data to reflect the attribution
+                await loadHourlyData()
+                
+                print("✅ Attributed \(hourData.steps) steps at \(hourData.timeString) to \(shoe.brand) \(shoe.model)")
+            } catch {
+                print("❌ Failed to attribute hour: \(error)")
+            }
         }
     }
     
@@ -446,37 +451,45 @@ private extension JournalView {
     }
     
     func attributeSelectedHoursToShoe(_ shoe: Shoe) async {
-        guard let service = shoeSessionService else { return }
+        guard let service = attributionService else { return }
         
         let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
         let hourDates = selectedHourData.map(\.date)
         
-        // Create sessions for all selected hours
-        await service.createHourSessions(for: shoe, hourDates: hourDates)
-        
-        // Reload the data to reflect the session-based attribution
-        await loadHourlyData()
-        
-        exitSelectionMode()
-        
-        print("✅ Batch attributed \(selectedHourData.count) hours to \(shoe.brand) \(shoe.model)")
+        do {
+            // Create attributions for all selected hours
+            try await service.attributeHours(hourDates, to: shoe)
+            
+            // Reload the data to reflect the attribution
+            await loadHourlyData()
+            
+            exitSelectionMode()
+            
+            print("✅ Batch attributed \(selectedHourData.count) hours to \(shoe.brand) \(shoe.model)")
+        } catch {
+            print("❌ Failed to batch attribute hours: \(error)")
+        }
     }
     
     func removeSelectedHoursAttribution() async {
-        guard let service = shoeSessionService else { return }
+        guard let service = attributionService else { return }
         
         let selectedHourData = hourlySteps.filter { selectedHours.contains($0.id) }
+        let hourDates = selectedHourData.map(\.date)
         
-        for hourData in selectedHourData {
-            await service.removeHourAttribution(for: hourData.date)
+        do {
+            // Remove attributions for all selected hours
+            try await service.removeAttributions(for: hourDates)
+            
+            // Reload the data to reflect the attribution removal
+            await loadHourlyData()
+            
+            exitSelectionMode()
+            
+            print("🗑️ Removed attribution for \(selectedHourData.count) hours")
+        } catch {
+            print("❌ Failed to remove attributions: \(error)")
         }
-        
-        // Reload the data to reflect the session-based attribution
-        await loadHourlyData()
-        
-        exitSelectionMode()
-        
-        print("🗑️ Removed attribution for \(selectedHourData.count) hours")
     }
 }
 
@@ -895,12 +908,11 @@ struct ActiveShoeLabel: View {
 
 // MARK: - Preview
 
+// Preview temporarily disabled during architecture refactor
+// TODO: Update preview with new dependency injection setup
+/*
 #Preview {
-    let viewModel = HealthKitViewModel(
-        modelContext: PreviewContainer.previewModelContext,
-        healthKitManager: HealthKitManager()
-    )
-    
     JournalView(healthKitViewModel: viewModel)
         .modelContainer(PreviewContainer.previewModelContainer)
-} 
+}
+*/ 

@@ -8,6 +8,8 @@ import SwiftUI
 
 struct MainView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var diContainer: DIContainer
+    @EnvironmentObject private var healthKitManager: HealthKitManager
     
     @State private var showingAddSheet = false
     @State private var shoeToDelete: Shoe?
@@ -17,8 +19,7 @@ struct MainView: View {
     @State private var shoeToEdit: Shoe?
     @State private var showEditSheet = false
     
-    // HealthKit integration
-    @StateObject private var healthKitManager = HealthKitManager()
+    // Clean architecture - access via DI
     @State private var healthKitViewModel: HealthKitViewModel?
     
     var body: some View {
@@ -109,12 +110,9 @@ struct MainView: View {
             .toolbarBackground(.visible, for: .tabBar)
         }
         .onAppear {
-            // Initialize the HealthKit ViewModel with the current model context
+            // Initialize the HealthKit ViewModel from DI container
             if healthKitViewModel == nil {
-                healthKitViewModel = HealthKitViewModel(
-                    modelContext: modelContext,
-                    healthKitManager: healthKitManager
-                )
+                healthKitViewModel = diContainer.resolve(HealthKitViewModel.self)
             }
         }
         .alert("Archive this shoe?", isPresented: $showArchiveAlert, presenting: shoeToArchive) { shoe in

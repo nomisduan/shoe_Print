@@ -157,12 +157,12 @@ struct HealthKitSetupView: View {
     }
 }
 
+// Preview temporarily disabled during architecture refactor
+// TODO: Update preview with new dependency injection setup
+/*
 #Preview {
-    let mockViewModel = HealthKitViewModel(
-        modelContext: PreviewContainer.previewModelContext,
-        healthKitManager: HealthKitManager()
-    )
     
     HealthKitSetupView(healthKitViewModel: mockViewModel)
         .modelContainer(PreviewContainer.previewModelContainer)
-} 
+}
+*/ 

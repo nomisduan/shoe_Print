@@ -8,6 +8,9 @@
 import Foundation
 import SwiftData
 
+/// Represents a shoe in the user's collection with session-based tracking
+/// Uses proper computed properties for SwiftUI reactivity
+/// Note: @Model classes are automatically Observable in SwiftData
 @Model
 final class Shoe {
     var timestamp: Date
@@ -23,29 +26,48 @@ final class Shoe {
     var estimatedLifespan: Double // in kilometers
     var entries: [StepEntry]
     
-    // MARK: - Session Relationship
-    // ✅ Removed broken didSet pattern - relationships load asynchronously in SwiftData
+    // MARK: - Relationships
+    
+    /// Sessions represent actual wearing periods (start/stop tracking)
     @Relationship(deleteRule: .cascade, inverse: \ShoeSession.shoe)
     var sessions: [ShoeSession] = []
     
-    // MARK: - Stored Properties for Observable State
+    /// Hour attributions represent Journal attributions (simplified system)
+    @Relationship(deleteRule: .cascade, inverse: \HourAttribution.shoe)
+    var hourAttributions: [HourAttribution] = []
     
-    /// Stored property for active state (observable by SwiftUI)
-    private var _isActive: Bool = false
+    // MARK: - Computed Properties (SwiftUI Reactive)
     
-    /// Stored property for activation date (observable by SwiftUI)
-    private var _activatedAt: Date? = nil
-    
-    /// Stored property for total distance (observable by SwiftUI)
-    private var _totalDistance: Double = 0.0 {
-        didSet {
-            // Update lifespan progress when distance changes
-            _lifespanProgress = computeLifespanProgress()
-        }
+    /// Returns true if this shoe has an active session (currently being worn)
+    /// ✅ Proper computed property - triggers SwiftUI updates when sessions change
+    var isActive: Bool {
+        return sessions.contains { $0.isActive }
     }
     
-    /// Stored property for lifespan progress (observable by SwiftUI)
-    private var _lifespanProgress: Double = 0.0
+    /// Returns the timestamp when the shoe was last activated
+    /// ✅ Proper computed property - derived from active session
+    var activatedAt: Date? {
+        return sessions.first(where: { $0.isActive })?.startDate
+    }
+    
+    /// Returns the total distance for this shoe from all sources
+    /// ✅ Proper computed property - aggregates from sessions, attributions, and entries
+    var totalDistance: Double {
+        let sessionDistance = sessions.reduce(0.0) { $0 + $1.distance }
+        let attributionDistance = hourAttributions.reduce(0.0) { $0 + $1.distance }
+        let entriesDistance = entries.reduce(0.0) { $0 + $1.distance }
+        
+        // Use sessions + attributions if available, otherwise fall back to entries
+        let modernDistance = sessionDistance + attributionDistance
+        return modernDistance > 0 ? modernDistance : entriesDistance
+    }
+    
+    /// Returns the lifespan progress (0.0 to 1.0)
+    /// ✅ Proper computed property - derived from totalDistance
+    var lifespanProgress: Double {
+        guard estimatedLifespan > 0 else { return 0.0 }
+        return min(totalDistance / estimatedLifespan, 1.0)
+    }
 
     init(timestamp: Date = .now, brand: String = "barefoot", model: String = "yours", notes: String = "", icon: String = "🦶", color: String = "CustomPurple", archived: Bool = false, isDefault: Bool = false, purchaseDate: Date? = nil, purchasePrice: Double? = nil, estimatedLifespan: Double = 800.0, entries: [StepEntry] = []) {
         self.timestamp = timestamp
@@ -61,54 +83,21 @@ final class Shoe {
         self.estimatedLifespan = estimatedLifespan
         self.entries = entries
         
-        // Initialize computed properties
-        self._isActive = false
-        self._activatedAt = nil
-        // Initialize with entries distance (sessions will be empty at init)
-        self._totalDistance = entries.reduce(0) { $0 + $1.distance }
-        self._lifespanProgress = computeLifespanProgress()
-        
-        print("🏗️ DEBUG: Initialized shoe \(brand) \(model) with distance: \(_totalDistance) km from \(entries.count) entries")
+        print("🏗️ Initialized shoe \(brand) \(model) with \(entries.count) entries")
     }
     
-    // MARK: - Public Observable Properties
     
-    /// Returns true if this shoe has an active session (currently being worn)
-    var isActive: Bool {
-        get { _isActive }
-        set { _isActive = newValue }
-    }
-    
-    /// Returns the timestamp when the shoe was last activated
-    var activatedAt: Date? {
-        get { _activatedAt }
-        set { _activatedAt = newValue }
-    }
-    
-    /// Returns the total distance for this shoe
-    var totalDistance: Double {
-        get { _totalDistance }
-        set { _totalDistance = newValue }
-    }
-    
-    /// Returns the lifespan progress (0.0 to 1.0)
-    var lifespanProgress: Double {
-        get { _lifespanProgress }
-        set { _lifespanProgress = newValue }
-    }
-    
-    // MARK: - Session-based Computed Properties (for internal use)
+    // MARK: - Session Access Methods
     
     /// Returns the currently active session, if any
-    /// ⚠️ Only reliable if relationships are loaded - prefer database queries
+    /// ✅ Computed property - automatically updates when sessions change
     var activeSession: ShoeSession? {
-        sessions.first(where: { $0.isActive })
+        return sessions.first(where: { $0.isActive })
     }
     
-    /// Gets active session using database query (always reliable)
+    /// Gets active session using database query (when relationships might not be loaded)
     func getActiveSession(using modelContext: ModelContext) async -> ShoeSession? {
         do {
-            // Fetch all active sessions and filter manually (SwiftData predicate limitation)
             let descriptor = FetchDescriptor<ShoeSession>(
                 predicate: #Predicate<ShoeSession> { session in
                     session.endDate == nil
@@ -124,11 +113,6 @@ final class Shoe {
         }
     }
     
-    /// Computes the lifespan progress
-    private func computeLifespanProgress() -> Double {
-        guard estimatedLifespan > 0 else { return 0.0 }
-        return min(_totalDistance / estimatedLifespan, 1.0)
-    }
     
     /// Returns all sessions for today
     var todaySessions: [ShoeSession] {
@@ -161,233 +145,88 @@ final class Shoe {
     
     // MARK: - Explicit Refresh Methods (SwiftData-Safe)
     
-    /// Refreshes all computed properties using database queries
-    /// ✅ Safe for SwiftData - doesn't rely on relationship loading state
+    /// Legacy method for compatibility - no longer needed with proper computed properties
+    /// ✅ Computed properties now automatically reflect current state
+    @available(*, deprecated, message: "No longer needed with proper computed properties")
     func refreshComputedProperties(using modelContext: ModelContext) async {
-        print("🔄 Refreshing computed properties for \(brand) \(model) using database queries")
-        
-        do {
-            // ✅ Add delay to ensure database consistency after deletions
-            try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-            
-            // ✅ Wrap database operations in error handling to prevent SwiftData macro crashes
-            let (activeSessions, allSessions) = await withTaskGroup(of: (activeSessions: [ShoeSession], allSessions: [ShoeSession]).self) { group in
-                group.addTask {
-                    do {
-                        // Query active sessions directly from database
-                        let activeSessionsDescriptor = FetchDescriptor<ShoeSession>(
-                            predicate: #Predicate<ShoeSession> { session in
-                                session.endDate == nil
-                            }
-                        )
-                        let allActiveSessions = try modelContext.fetch(activeSessionsDescriptor)
-                        let activeSessions = allActiveSessions.filter { session in
-                            // ✅ Use only safe relationship checks to avoid SwiftData macro issues
-                            guard let shoe = session.shoe else { 
-                                print("⚠️ Found session with nil shoe reference - skipping")
-                                return false 
-                            }
-                            let shoeID = shoe.persistentModelID
-                            return shoeID == self.persistentModelID
-                        }
-                        
-                        // Query all sessions for distance calculation
-                        let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
-                        let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
-                        let allSessions = allSessionsInDB.filter { session in
-                            // ✅ Use only safe relationship checks to avoid SwiftData macro issues
-                            guard let shoe = session.shoe else { 
-                                print("⚠️ Found session with nil shoe reference - skipping")
-                                return false 
-                            }
-                            let shoeID = shoe.persistentModelID
-                            return shoeID == self.persistentModelID
-                        }
-                        
-                        return (activeSessions: activeSessions, allSessions: allSessions)
-                        
-                    } catch {
-                        print("❌ Database query failed: \(error.localizedDescription)")
-                        return (activeSessions: [], allSessions: [])
-                    }
-                }
-                
-                // Return the result from the task
-                for await result in group {
-                    return result
-                }
-                return (activeSessions: [], allSessions: [])
-            }
-            
-            // Update computed properties with fresh data
-            let wasActive = _isActive
-            let oldDistance = _totalDistance
-            
-            _isActive = !activeSessions.isEmpty
-            _activatedAt = activeSessions.first?.startDate
-            
-            // ✅ Calculate total distance using fallback pattern - avoid direct property access issues
-            let sessionDistance = allSessions.reduce(0) { total, session in
-                // ✅ Access distance property directly - sessions should be valid by this point
-                let distance = session.distance
-                guard distance >= 0 else {
-                    print("⚠️ Invalid session distance: \(distance) - skipping")
-                    return total
-                }
-                return total + distance
-            }
-            
-            if !allSessions.isEmpty {
-                // ✅ Use session-based calculation (new system)
-                _totalDistance = sessionDistance
-                print("📊 Using session-based distance: \(String(format: "%.1f", sessionDistance)) km from \(allSessions.count) sessions")
-            } else {
-                // ✅ Fallback to entries-based calculation (legacy system)
-                let entriesDistance = entries.reduce(0) { total, entry in
-                    guard entry.distance >= 0 else {
-                        print("⚠️ Invalid entry distance: \(entry.distance) - skipping")
-                        return total
-                    }
-                    return total + entry.distance
-                }
-                _totalDistance = entriesDistance
-                print("📊 Using entries-based distance: \(String(format: "%.1f", entriesDistance)) km from \(entries.count) entries")
-            }
-            _lifespanProgress = computeLifespanProgress()
-            
-            print("✅ Properties updated: active \(wasActive)→\(_isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", _totalDistance)) km")
-            
-        } catch {
-            print("❌ Critical error refreshing computed properties for \(brand) \(model): \(error.localizedDescription)")
-            // ✅ Enhanced fallback with error isolation
-            Task { @MainActor in
-                do {
-                    // ✅ Additional delay for crash recovery
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                    print("🔄 Attempting fallback memory refresh for \(brand) \(model)")
-                    refreshComputedPropertiesFromMemory()
-                } catch {
-                    print("❌ Fallback also failed for \(brand) \(model): \(error.localizedDescription)")
-                    // ✅ Final safe state - just reset to known values
-                    _isActive = false
-                    _activatedAt = nil
-                    print("🛡️ Reset to safe state for \(brand) \(model)")
-                }
-            }
-        }
+        print("ℹ️ refreshComputedProperties called but no longer needed - computed properties are now reactive")
+        // No-op - computed properties automatically update when relationships change
     }
     
-    /// Quick refresh using already-loaded relationships (fallback)
-    /// ⚠️ Only use when you know relationships are loaded
+    /// Legacy method for compatibility - no longer needed with proper computed properties
+    @available(*, deprecated, message: "No longer needed with proper computed properties")
     func refreshComputedPropertiesFromMemory() {
-        let wasActive = _isActive
-        let oldDistance = _totalDistance
-        
-        _isActive = sessions.contains { $0.isActive }
-        _activatedAt = sessions.first(where: { $0.isActive })?.startDate
-        
-        // ✅ Use fallback pattern to avoid double-counting
-        if !sessions.isEmpty {
-            _totalDistance = sessions.reduce(0) { $0 + $1.distance }
-        } else {
-            _totalDistance = entries.reduce(0) { $0 + $1.distance }
-        }
-        _lifespanProgress = computeLifespanProgress()
-        
-        print("🔄 Memory refresh for \(brand) \(model): active \(wasActive)→\(_isActive), distance \(String(format: "%.1f", oldDistance))→\(String(format: "%.1f", _totalDistance)) km")
+        print("ℹ️ refreshComputedPropertiesFromMemory called but no longer needed - computed properties are now reactive")
+        // No-op - computed properties automatically update when relationships change
     }
     
-    /// Forces a complete refresh of distance from database
+    /// Legacy method for compatibility - no longer needed with proper computed properties
+    @available(*, deprecated, message: "No longer needed with proper computed properties")
     func refreshDistanceFromDatabase(using modelContext: ModelContext) async {
-        do {
-            let allSessionsDescriptor = FetchDescriptor<ShoeSession>()
-            let allSessionsInDB = try modelContext.fetch(allSessionsDescriptor)
-            let sessions = allSessionsInDB.filter { session in
-                session.shoe?.persistentModelID == self.persistentModelID
-            }
-            
-            // ✅ Use fallback pattern to avoid double-counting
-            let newDistance: Double
-            if !sessions.isEmpty {
-                newDistance = sessions.reduce(0) { $0 + $1.distance }
-            } else {
-                newDistance = entries.reduce(0) { $0 + $1.distance }
-            }
-            
-            if abs(_totalDistance - newDistance) > 0.01 { // Only update if significant change
-                let oldDistance = _totalDistance
-                _totalDistance = newDistance
-                _lifespanProgress = computeLifespanProgress()
-                print("📊 Distance updated for \(brand) \(model): \(String(format: "%.1f", oldDistance)) → \(String(format: "%.1f", _totalDistance)) km")
-            }
-        } catch {
-            print("❌ Error refreshing distance for \(brand) \(model): \(error)")
-        }
+        print("ℹ️ refreshDistanceFromDatabase called but no longer needed - totalDistance is now computed")
+        // No-op - totalDistance is now a computed property that automatically reflects current sessions
     }
     
     // MARK: - Session-based Computed Properties
     
-    /// Returns total steps from all sessions (real data)
-    var totalStepsFromSessions: Int {
-        return sessions.reduce(0) { total, session in
-            return total + session.steps
-        }
+    /// Returns total steps from all sources (real HealthKit data)
+    var totalSteps: Int {
+        let sessionSteps = sessions.reduce(0) { $0 + $1.steps }
+        let attributionSteps = hourAttributions.reduce(0) { $0 + $1.steps }
+        let entriesSteps = entries.reduce(0) { $0 + $1.steps }
+        
+        // Use sessions + attributions if available, otherwise fall back to entries
+        let modernSteps = sessionSteps + attributionSteps
+        return modernSteps > 0 ? modernSteps : entriesSteps
     }
     
     /// Returns the number of days this shoe has been used
-    var usageDaysFromSessions: Int {
+    var usageDays: Int {
         let calendar = Calendar.current
-        let uniqueDays = Set(sessions.map { session in
-            calendar.startOfDay(for: session.startDate)
-        })
+        
+        var uniqueDays = Set<Date>()
+        
+        // Add days from sessions
+        uniqueDays.formUnion(sessions.map { calendar.startOfDay(for: $0.startDate) })
+        
+        // Add days from hour attributions
+        uniqueDays.formUnion(hourAttributions.map { calendar.startOfDay(for: $0.hourDate) })
+        
+        // If no modern data, fall back to entries
+        if uniqueDays.isEmpty {
+            uniqueDays.formUnion(entries.map { calendar.startOfDay(for: $0.startDate) })
+        }
+        
         return uniqueDays.count
     }
     
     /// Returns the last time this shoe was used
-    var lastUsedFromSessions: Date? {
-        return sessions.compactMap { $0.endDate }.max() ?? sessions.map { $0.startDate }.max()
+    var lastUsed: Date? {
+        var dates: [Date] = []
+        
+        // Add dates from sessions
+        dates.append(contentsOf: sessions.compactMap { $0.endDate })
+        dates.append(contentsOf: sessions.map { $0.startDate })
+        
+        // Add dates from hour attributions
+        dates.append(contentsOf: hourAttributions.map { $0.hourDate })
+        
+        // If no modern data, fall back to entries
+        if dates.isEmpty {
+            dates.append(contentsOf: entries.map { $0.endDate })
+        }
+        
+        return dates.max()
     }
     
     /// Returns total hours this shoe has been worn
     var totalWearTimeHours: Double {
-        return sessions.reduce(0) { total, session in
-            total + session.durationInHours
-        }
+        return sessions.reduce(0) { $0 + $1.durationInHours }
     }
     
-    // MARK: - Legacy Computed Properties (for backward compatibility)
-    
-    var totalSteps: Int {
-        // Use session-based calculation if sessions exist, otherwise fall back to entries
-        if !sessions.isEmpty {
-            return totalStepsFromSessions
-        } else {
-            return entries.reduce(0) { $0 + $1.steps }
-        }
-    }
-    
+    /// Returns total repairs performed on this shoe
     var totalRepairs: Int {
-        entries.filter { $0.repair }.count
-    }
-    
-    var lastUsed: Date? {
-        // Use session-based calculation if sessions exist, otherwise fall back to entries
-        if !sessions.isEmpty {
-            return lastUsedFromSessions
-        } else {
-            return entries.map { $0.endDate }.max()
-        }
-    }
-    
-    var usageDays: Int {
-        // Use session-based calculation if sessions exist, otherwise fall back to entries
-        if !sessions.isEmpty {
-            return usageDaysFromSessions
-        } else {
-            let calendar = Calendar.current
-            let uniqueDays = Set(entries.map { calendar.startOfDay(for: $0.startDate) })
-            return uniqueDays.count
-        }
+        return entries.filter { $0.repair }.count
     }
     
     // MARK: - Business Logic Methods

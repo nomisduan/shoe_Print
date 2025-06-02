@@ -132,10 +132,7 @@ struct ShoeGridView: View {
             
             for shoe in shoes.prefix(3) { // Afficher les 3 premières pour debug
                 print("👟 \(shoe.brand) \(shoe.model) - Active: \(shoe.isActive), Archived: \(shoe.archived)")
-                // ✅ Use new async refresh method
-                Task {
-                    await shoe.refreshComputedProperties(using: modelContext)
-                }
+                // ✅ Computed properties now update automatically - no manual refresh needed
             }
             
             // Load HealthKit year-to-date totals

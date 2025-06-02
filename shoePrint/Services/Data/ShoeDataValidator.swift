@@ -188,11 +188,13 @@ final class ShoeDataValidator {
     private func repairShoe(_ shoe: Shoe) async -> Bool {
         var wasRepaired = false
         
-        // Force refresh computed properties to fix any inconsistencies
-        await shoe.refreshComputedProperties(using: modelContext)
+        // Computed properties now automatically reflect current state - no manual repair needed
+        // Simply accessing the properties ensures relationships are loaded
+        let _ = shoe.isActive
+        let _ = shoe.totalDistance
         wasRepaired = true
         
-        print("🔧 Repaired computed properties for \(shoe.brand) \(shoe.model)")
+        print("🔧 Triggered computed property access for \(shoe.brand) \(shoe.model)")
         
         return wasRepaired
     }
