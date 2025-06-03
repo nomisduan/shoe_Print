@@ -16,6 +16,7 @@ final class AttributionService: ObservableObject {
     // MARK: - Properties
     
     private let attributionRepository: AttributionRepositoryProtocol
+    private let sessionRepository: SessionRepositoryProtocol
     private let healthKitManager: HealthKitManager
     
     @Published var isProcessing = false
@@ -23,8 +24,13 @@ final class AttributionService: ObservableObject {
     
     // MARK: - Initialization
     
-    init(attributionRepository: AttributionRepositoryProtocol, healthKitManager: HealthKitManager) {
+    init(
+        attributionRepository: AttributionRepositoryProtocol,
+        sessionRepository: SessionRepositoryProtocol,
+        healthKitManager: HealthKitManager
+    ) {
         self.attributionRepository = attributionRepository
+        self.sessionRepository = sessionRepository
         self.healthKitManager = healthKitManager
     }
     
@@ -165,24 +171,52 @@ final class AttributionService: ObservableObject {
     }
     
     /// Applies attributions to hourly step data for Journal display
-    /// ✅ Replaces complex session-based attribution logic
+    /// ✅ Combines HourAttributions AND active sessions for complete attribution
     func applyAttributions(to hourlyData: [HourlyStepData], for date: Date) async -> [HourlyStepData] {
         do {
+            // Get explicit hour attributions
             let attributions = try await getAttributions(for: date)
             let attributionsByHour = Dictionary(grouping: attributions) { 
                 Calendar.current.component(.hour, from: $0.hourDate) 
             }
             
+            // ✅ Also get active sessions that cover this date
+            let sessions = await getSessionsForDate(date)
+            
             return hourlyData.map { hourData in
                 var attributed = hourData
+                
+                // Priority 1: Explicit hour attributions (manual attribution)
                 if let attribution = attributionsByHour[hourData.hour]?.first {
                     attributed.assignedShoe = attribution.shoe
+                    return attributed
                 }
+                
+                // Priority 2: Active session attribution (automatic)
+                for session in sessions {
+                    if session.coversHour(hourData.date) {
+                        attributed.assignedShoe = session.shoe
+                        break
+                    }
+                }
+                
                 return attributed
             }
         } catch {
             print("❌ Failed to apply attributions: \(error)")
             return hourlyData
+        }
+    }
+    
+    // MARK: - Session Integration (Private)
+    
+    /// Gets sessions that overlap with a specific date
+    private func getSessionsForDate(_ date: Date) async -> [ShoeSession] {
+        do {
+            return try await sessionRepository.fetchSessionsForDate(date)
+        } catch {
+            print("❌ Failed to fetch sessions for date: \(error)")
+            return []
         }
     }
     

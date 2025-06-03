@@ -103,10 +103,14 @@ final class SwiftDataSessionRepository: SessionRepositoryProtocol {
     }
     
     func endSession(_ session: ShoeSession, autoClosed: Bool = false) async throws {
-        guard session.isActive else { return }
-        
         session.endDate = Date()
         session.autoClosed = autoClosed
+        try modelContext.save()
+    }
+    
+    /// Updates an existing session (saves changes to the context)
+    func updateSession(_ session: ShoeSession) async throws {
+        // Session is already updated in memory, just save the context
         try modelContext.save()
     }
     

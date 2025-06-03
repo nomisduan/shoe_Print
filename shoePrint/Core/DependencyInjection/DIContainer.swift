@@ -146,6 +146,7 @@ extension DIContainer {
         registerSingleton(AttributionService.self) {
             AttributionService(
                 attributionRepository: self.resolve(AttributionRepositoryProtocol.self),
+                sessionRepository: self.resolve(SessionRepositoryProtocol.self),
                 healthKitManager: healthKitManager
             )
         }
@@ -156,6 +157,8 @@ extension DIContainer {
                 sessionService: self.resolve(SessionService.self)
             )
         }
+        
+        print("✅ All services configured successfully")
     }
 }
 

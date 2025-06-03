@@ -45,6 +45,9 @@ protocol SessionRepositoryProtocol {
     /// Ends a session
     func endSession(_ session: ShoeSession, autoClosed: Bool) async throws
     
+    /// Updates an existing session
+    func updateSession(_ session: ShoeSession) async throws
+    
     /// Ends all active sessions
     func endAllActiveSessions() async throws
     
