@@ -97,24 +97,6 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - **Visual Consistency**: Unified color schemes and typography
 - **Animation Improvements**: Smooth transitions and feedback
 
-## Getting Started
-
-### Prerequisites
-- iOS 18.1 or later
-- iPhone with HealthKit support
-- Health app with step tracking enabled
-
-### Installation
-1. Clone the repository
-2. Open `shoePrint.xcodeproj` in Xcode 16+
-3. Build and run on device (Simulator has limited HealthKit functionality)
-
-### First Run Setup
-1. Grant HealthKit permissions when prompted
-2. Add your first shoe pair to the collection
-3. Start a wearing session to begin tracking
-4. Explore the journal to see your activity attribution
-
 ## Next Steps & Roadmap
 
 ### UI/UX Improvements
