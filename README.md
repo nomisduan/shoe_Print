@@ -1,5 +1,8 @@
 # ShoePrint 
 
+Available on TestFlight : https://testflight.apple.com/join/TgEZXbQn
+Feedbacks are welcome :)
+
 > A sustainable footwear tracking app that helps you make conscious consumption choices by monitoring the real usage and lifespan of your shoes.
 
 ShoePrint encourages mindful consumption by providing detailed insights into your footwear usage patterns, helping you maximize the lifespan of each pair and make informed purchasing decisions.
