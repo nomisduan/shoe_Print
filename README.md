@@ -1,10 +1,10 @@
-# ShoePrint 👟
+# ShoePrint 
 
 > A sustainable footwear tracking app that helps you make conscious consumption choices by monitoring the real usage and lifespan of your shoes.
 
 ShoePrint encourages mindful consumption by providing detailed insights into your footwear usage patterns, helping you maximize the lifespan of each pair and make informed purchasing decisions.
 
-## 🌱 Philosophy: Sustainable Footwear Management
+## Philosophy: Sustainable Footwear Management
 
 Rather than promoting endless consumption, ShoePrint focuses on:
 - **Maximizing shoe lifespan** through proper usage tracking
@@ -13,33 +13,33 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - **Repair-first mentality** with integrated maintenance tracking
 - **Quality over quantity** philosophy in footwear choices
 
-## ✨ Key Features
+## Key Features
 
-### 📊 Real-time Activity Tracking
+### Real-time Activity Tracking
 - **HealthKit Integration**: Leverages real step count and walking distance data
 - **Automatic Attribution**: Smart session management assigns activity to specific shoes
 - **Hourly Precision**: Detailed journal view with hourly step and distance breakdowns
 - **True Data**: No estimations - uses actual HealthKit measurements
 
-### 👟 Smart Shoe Management
+### Smart Shoe Management
 - **Visual Collection**: Grid-based shoe library with custom colors and emojis
 - **Active Session Tracking**: Real-time monitoring of which shoes you're wearing
 - **Usage Analytics**: Distance, steps, wear time, and repair history per pair
 - **Lifespan Progress**: Track how much life is left in each pair
 
-### 🔧 Maintenance & Sustainability
+### Maintenance & Sustainability
 - **Repair Tracking**: Log maintenance and repairs to extend shoe lifespan
 - **Default Shoe System**: Auto-start tracking with your primary pair
 - **Archive System**: Keep historical data while organizing your collection
 - **Durability Insights**: Make data-driven decisions about shoe quality
 
-### 📅 Historical Journal
+### Historical Journal
 - **Daily Activity View**: Horizontal scrolling timeline of hourly activity
 - **Retrospective Attribution**: Assign past activities to specific shoes
 - **Batch Operations**: Efficiently manage multiple hours of activity
 - **Visual Feedback**: Clear attribution with shoe emojis and colors
 
-## 🏗️ Technical Architecture
+## Technical Architecture
 
 ### Data Layer
 - **SwiftData**: Modern Core Data replacement for local persistence
@@ -58,7 +58,7 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - **@Observable**: Latest data binding for responsive UI updates
 - **iOS 18.1+**: Takes advantage of newest platform features
 
-## 📱 User Interface
+## User Interface
 
 ### Collection View
 - **Grid Layout**: Two-column shoe collection with visual cards
@@ -78,10 +78,9 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - **Purchase History**: Track investment and value per wear
 - **Action Center**: Start sessions, set defaults, log repairs
 
-## 🛠️ Recent Technical Improvements
+## Recent Technical Improvements
 
 ### HealthKit Data Integration (Latest Update)
-- **Eliminated Estimations**: Removed all 4 km/h walking speed calculations
 - **Real Distance Data**: Direct integration with HealthKit distance measurements
 - **True Step Counts**: Actual step data from device sensors
 - **Session Enhancement**: Store real HealthKit data in ShoeSession objects
@@ -98,7 +97,7 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - **Visual Consistency**: Unified color schemes and typography
 - **Animation Improvements**: Smooth transitions and feedback
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - iOS 18.1 or later
@@ -116,7 +115,7 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 3. Start a wearing session to begin tracking
 4. Explore the journal to see your activity attribution
 
-## 🎯 Next Steps & Roadmap
+## Next Steps & Roadmap
 
 ### UI/UX Improvements
 - [ ] **HealthKit Request Enhancement**: Improve permission flow in Journal
@@ -145,7 +144,7 @@ Rather than promoting endless consumption, ShoePrint focuses on:
 - [ ] **Prediction Models**: Forecast shoe lifespan based on usage patterns
 - [ ] **Cost Analysis**: Track cost-per-wear and investment efficiency
 
-## 💚 Sustainability Impact
+## Sustainability Impact
 
 ShoePrint aims to reduce footwear waste by:
 - **Extending Product Life**: Encouraging maximum use of each pair
@@ -154,28 +153,12 @@ ShoePrint aims to reduce footwear waste by:
 - **Quality Awareness**: Highlighting differences in shoe durability
 - **Conscious Consumption**: Mindful approach to footwear acquisition
 
-## 🤝 Contributing
 
-We welcome contributions that align with our sustainability mission:
-- Bug fixes and performance improvements
-- UI/UX enhancements for better user experience
-- Features that promote conscious consumption
-- Documentation and accessibility improvements
-
-## 📄 Privacy & Data
+## Privacy & Data
 
 - **Local Storage**: All data stored locally on device
 - **HealthKit Privacy**: Only reads step and distance data
 - **No Tracking**: No analytics or user behavior tracking
 - **User Control**: Complete control over data attribution and deletion
 
-## 🚧 TestFlight Deployment Note
 
-If you encounter issues with TestFlight validation related to health data permissions, ensure that:
-- Only `NSHealthShareUsageDescription` is declared (read permissions only)
-- No write permissions (`NSHealthUpdateUsageDescription`) are requested
-- The permission description clearly states "read-only" access for activity tracking
-
----
-
-*Built with ❤️ for sustainable living and conscious consumption* 
